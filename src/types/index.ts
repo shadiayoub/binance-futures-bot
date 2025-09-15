@@ -110,3 +110,105 @@ export interface LogEntry {
   timestamp: Date;
   data?: any;
 }
+
+// AI Integration Types
+export interface AIConfig {
+  deepSeekApiKey: string;
+  deepSeekBaseUrl: string;
+  enableSentimentAnalysis: boolean;
+  enablePatternRecognition: boolean;
+  enableMarketRegimeDetection: boolean;
+  enableRiskAssessment: boolean;
+  enableCorrelationAnalysis: boolean;
+  sentimentAnalysisInterval: number; // minutes
+  patternRecognitionInterval: number; // minutes
+  marketRegimeInterval: number; // minutes
+  riskAssessmentInterval: number; // minutes
+  maxApiCallsPerHour: number;
+  fallbackToTechnicalOnly: boolean;
+}
+
+export interface SentimentData {
+  overallSentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  sentimentScore: number; // -1 to 1
+  confidence: number; // 0 to 1
+  sources: {
+    news: number;
+    social: number;
+    analyst: number;
+  };
+  keyEvents: string[];
+  timestamp: Date;
+}
+
+export interface PatternData {
+  patternType: 'SUPPORT' | 'RESISTANCE' | 'BREAKOUT' | 'REVERSAL' | 'CONTINUATION';
+  patternName: string;
+  confidence: number; // 0 to 1
+  strength: number; // 0 to 1
+  priceLevel: number;
+  timeframe: string;
+  description: string;
+  timestamp: Date;
+}
+
+export interface MarketRegimeData {
+  regime: 'TRENDING_BULL' | 'TRENDING_BEAR' | 'RANGING' | 'VOLATILE' | 'CALM';
+  confidence: number; // 0 to 1
+  volatility: number; // 0 to 1
+  trendStrength: number; // 0 to 1
+  marketPhase: 'ACCUMULATION' | 'MARKUP' | 'DISTRIBUTION' | 'MARKDOWN';
+  expectedDuration: number; // hours
+  timestamp: Date;
+}
+
+export interface RiskAssessmentData {
+  overallRisk: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+  riskScore: number; // 0 to 1
+  factors: {
+    volatility: number;
+    correlation: number;
+    liquidity: number;
+    sentiment: number;
+    technical: number;
+  };
+  recommendations: {
+    positionSize: number; // multiplier (0.5 to 1.5)
+    leverage: number; // multiplier (0.5 to 1.5)
+    hedgeRatio: number; // multiplier (0.8 to 1.2)
+    entryDelay: number; // minutes to wait
+  };
+  timestamp: Date;
+}
+
+export interface CorrelationData {
+  asset: string;
+  correlation: number; // -1 to 1
+  significance: number; // 0 to 1
+  trend: 'INCREASING' | 'DECREASING' | 'STABLE';
+  impact: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  timestamp: Date;
+}
+
+export interface AIAnalysisResult {
+  sentiment: SentimentData;
+  patterns: PatternData[];
+  marketRegime: MarketRegimeData;
+  riskAssessment: RiskAssessmentData;
+  correlations: CorrelationData[];
+  overallConfidence: number; // 0 to 1
+  tradingRecommendation: 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL' | 'AVOID';
+  timestamp: Date;
+}
+
+export interface EnhancedTradingSignal extends TradingSignal {
+  aiConfidence: number; // 0 to 1
+  aiFactors: {
+    sentiment: number;
+    pattern: number;
+    regime: number;
+    risk: number;
+  };
+  aiRecommendation: string;
+  originalConfidence: number;
+}

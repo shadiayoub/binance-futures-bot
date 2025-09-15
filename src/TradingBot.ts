@@ -5,15 +5,20 @@ import {
   TechnicalConfig, 
   SupportResistanceLevels,
   BotState,
-  TradingSignal 
+  TradingSignal,
+  AIConfig,
+  AIAnalysisResult,
+  EnhancedTradingSignal
 } from './types';
 import { BinanceService } from './services/BinanceService';
 import { TechnicalAnalysis } from './services/TechnicalAnalysis';
 import { PositionManager } from './services/PositionManager';
 import { HedgeStrategy } from './strategies/HedgeStrategy';
 import { ScalpStrategy } from './strategies/ScalpStrategy';
+import { AIService } from './services/AIService';
 import { logger } from './utils/logger';
 import { BOT_VERSION, VERSION_INFO } from './config/version';
+import { getAIConfig } from './config/AIConfig';
 import * as cron from 'node-cron';
 
 export class TradingBot {
@@ -22,35 +27,43 @@ export class TradingBot {
   private positionManager: PositionManager;
   private hedgeStrategy: HedgeStrategy;
   private scalpStrategy: ScalpStrategy;
+  private aiService: AIService;
   private config: TradingConfig;
+  private aiConfig: AIConfig;
   private isRunning: boolean = false;
   private heavyAnalysisJob: cron.ScheduledTask | null = null;
   private quickDecisionJob: cron.ScheduledTask | null = null;
+  private lastAIAnalysis: AIAnalysisResult | null = null;
 
   constructor(
     config: TradingConfig,
     positionSizing: PositionSizing,
     leverageSettings: LeverageSettings,
     technicalConfig: TechnicalConfig,
-    supportResistanceLevels: SupportResistanceLevels
+    supportResistanceLevels: SupportResistanceLevels,
+    aiConfig?: AIConfig
   ) {
     this.config = config;
+    this.aiConfig = aiConfig || getAIConfig();
     this.binanceService = new BinanceService(config);
     this.technicalAnalysis = new TechnicalAnalysis(technicalConfig);
     this.positionManager = new PositionManager(this.binanceService, positionSizing, leverageSettings);
+    this.aiService = new AIService(this.aiConfig);
     this.hedgeStrategy = new HedgeStrategy(
       this.binanceService,
       this.technicalAnalysis,
       supportResistanceLevels,
       positionSizing,
       leverageSettings,
-      this.positionManager.getDynamicLevels()
+      this.positionManager.getDynamicLevels(),
+      this.aiService
     );
     this.scalpStrategy = new ScalpStrategy(
       this.binanceService,
       this.technicalAnalysis,
       this.positionManager.getDynamicLevels(),
-      this.positionManager
+      this.positionManager,
+      this.aiService
     );
   }
 
@@ -239,17 +252,43 @@ export class TradingBot {
       const dynamicLevels = this.positionManager.getDynamicLevels();
       dynamicLevels.learnLevelsCombined(marketData4h, marketData1h, marketData15m);
       
-      // Execute hedge strategy
-      const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h);
+      // Get technical indicators for AI analysis
+      const technicalIndicators = this.technicalAnalysis.getTechnicalIndicators(marketData1h);
       
-      // Execute scalp strategy with 15m data
-      const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m);
+      // Perform AI analysis (comprehensive analysis every heavy loop)
+      logger.info('🤖 Performing AI analysis...');
+      const aiAnalysis = await this.aiService.getComprehensiveAnalysis(
+        this.config.tradingPair,
+        marketData1h,
+        technicalIndicators,
+        currentPrice
+      );
       
-      // Combine all signals
-      const allSignals = [...hedgeSignals, ...scalpSignals];
+      if (aiAnalysis) {
+        this.lastAIAnalysis = aiAnalysis;
+        logger.info('🤖 AI analysis completed', {
+          overallConfidence: aiAnalysis.overallConfidence.toFixed(3),
+          tradingRecommendation: aiAnalysis.tradingRecommendation,
+          sentiment: aiAnalysis.sentiment.overallSentiment,
+          regime: aiAnalysis.marketRegime.regime,
+          risk: aiAnalysis.riskAssessment.overallRisk,
+          patternsFound: aiAnalysis.patterns.length
+        });
+      } else {
+        logger.warn('🤖 AI analysis failed, using technical analysis only');
+      }
+      
+      // Execute hedge strategy with AI insights
+      const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h, aiAnalysis);
+      
+      // Execute scalp strategy with 15m data and AI insights
+      const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m, aiAnalysis);
+      
+      // Enhance signals with AI analysis
+      const enhancedSignals = this.enhanceSignalsWithAI([...hedgeSignals, ...scalpSignals], aiAnalysis);
       
       // Execute signals
-      for (const signal of allSignals) {
+      for (const signal of enhancedSignals) {
         await this.executeSignal(signal);
       }
       
@@ -323,6 +362,163 @@ export class TradingBot {
       
     } catch (error) {
       logger.error('Error in quick decision loop', error);
+    }
+  }
+
+  /**
+   * Enhance trading signals with AI analysis
+   */
+  private enhanceSignalsWithAI(signals: TradingSignal[], aiAnalysis: AIAnalysisResult | null): EnhancedTradingSignal[] {
+    if (!aiAnalysis) {
+      // Return signals without AI enhancement if analysis failed
+      return signals.map(signal => ({
+        ...signal,
+        aiConfidence: 0.5,
+        aiFactors: { sentiment: 0, pattern: 0, regime: 0, risk: 0 },
+        aiRecommendation: 'No AI analysis available',
+        originalConfidence: signal.confidence
+      }));
+    }
+
+    return signals.map(signal => {
+      // Calculate AI confidence based on signal type and AI analysis
+      let aiConfidence = 0.5;
+      let aiRecommendation = '';
+
+      // Adjust confidence based on AI factors
+      const sentimentFactor = this.getSentimentFactor(signal, aiAnalysis.sentiment);
+      const patternFactor = this.getPatternFactor(signal, aiAnalysis.patterns);
+      const regimeFactor = this.getRegimeFactor(signal, aiAnalysis.marketRegime);
+      const riskFactor = this.getRiskFactor(signal, aiAnalysis.riskAssessment);
+
+      aiConfidence = (sentimentFactor + patternFactor + regimeFactor + riskFactor) / 4;
+
+      // Generate AI recommendation
+      aiRecommendation = this.generateAIRecommendation(signal, aiAnalysis, aiConfidence);
+
+      // Apply AI risk adjustments
+      if (aiAnalysis.riskAssessment.overallRisk === 'EXTREME') {
+        aiConfidence *= 0.3; // Severely reduce confidence in extreme risk
+        aiRecommendation = 'AVOID: Extreme market risk detected';
+      } else if (aiAnalysis.riskAssessment.overallRisk === 'HIGH') {
+        aiConfidence *= 0.7; // Reduce confidence in high risk
+      }
+
+      return {
+        ...signal,
+        aiConfidence,
+        aiFactors: {
+          sentiment: sentimentFactor,
+          pattern: patternFactor,
+          regime: regimeFactor,
+          risk: riskFactor
+        },
+        aiRecommendation,
+        originalConfidence: signal.confidence
+      };
+    });
+  }
+
+  /**
+   * Get sentiment factor for signal enhancement
+   */
+  private getSentimentFactor(signal: TradingSignal, sentiment: any): number {
+    const sentimentScore = sentiment.sentimentScore;
+    
+    if (signal.position === 'LONG' && sentimentScore > 0.2) {
+      return 0.8; // Bullish sentiment supports long positions
+    } else if (signal.position === 'SHORT' && sentimentScore < -0.2) {
+      return 0.8; // Bearish sentiment supports short positions
+    } else if (signal.position === 'LONG' && sentimentScore < -0.2) {
+      return 0.2; // Bearish sentiment opposes long positions
+    } else if (signal.position === 'SHORT' && sentimentScore > 0.2) {
+      return 0.2; // Bullish sentiment opposes short positions
+    }
+    
+    return 0.5; // Neutral sentiment
+  }
+
+  /**
+   * Get pattern factor for signal enhancement
+   */
+  private getPatternFactor(signal: TradingSignal, patterns: any[]): number {
+    if (patterns.length === 0) return 0.5;
+
+    let patternScore = 0;
+    let totalWeight = 0;
+
+    for (const pattern of patterns) {
+      const weight = pattern.confidence * pattern.strength;
+      
+      if (pattern.patternType === 'BREAKOUT' && signal.type === 'ENTRY') {
+        patternScore += weight * 0.8;
+      } else if (pattern.patternType === 'REVERSAL' && signal.type === 'HEDGE') {
+        patternScore += weight * 0.7;
+      } else if (pattern.patternType === 'SUPPORT' && signal.position === 'LONG') {
+        patternScore += weight * 0.6;
+      } else if (pattern.patternType === 'RESISTANCE' && signal.position === 'SHORT') {
+        patternScore += weight * 0.6;
+      } else {
+        patternScore += weight * 0.4;
+      }
+      
+      totalWeight += weight;
+    }
+
+    return totalWeight > 0 ? Math.min(patternScore / totalWeight, 1) : 0.5;
+  }
+
+  /**
+   * Get market regime factor for signal enhancement
+   */
+  private getRegimeFactor(signal: TradingSignal, regime: any): number {
+    switch (regime.regime) {
+      case 'TRENDING_BULL':
+        return signal.position === 'LONG' ? 0.8 : 0.3;
+      case 'TRENDING_BEAR':
+        return signal.position === 'SHORT' ? 0.8 : 0.3;
+      case 'RANGING':
+        return signal.type === 'HEDGE' ? 0.7 : 0.5;
+      case 'VOLATILE':
+        return signal.type === 'HEDGE' ? 0.8 : 0.4;
+      case 'CALM':
+        return signal.type === 'ENTRY' ? 0.6 : 0.4;
+      default:
+        return 0.5;
+    }
+  }
+
+  /**
+   * Get risk factor for signal enhancement
+   */
+  private getRiskFactor(signal: TradingSignal, risk: any): number {
+    const riskScore = risk.riskScore;
+    
+    // Higher risk generally reduces confidence, except for hedge signals
+    if (signal.type === 'HEDGE') {
+      return riskScore > 0.7 ? 0.8 : 0.6; // Hedges are more valuable in high risk
+    } else {
+      return riskScore > 0.7 ? 0.3 : 0.7; // Entries are less attractive in high risk
+    }
+  }
+
+  /**
+   * Generate AI recommendation for signal
+   */
+  private generateAIRecommendation(signal: TradingSignal, aiAnalysis: AIAnalysisResult, aiConfidence: number): string {
+    const recommendation = aiAnalysis.tradingRecommendation;
+    const risk = aiAnalysis.riskAssessment.overallRisk;
+    
+    if (risk === 'EXTREME') {
+      return 'AVOID: Extreme market risk';
+    }
+    
+    if (aiConfidence > 0.7) {
+      return `STRONG: ${recommendation} - High AI confidence`;
+    } else if (aiConfidence > 0.5) {
+      return `MODERATE: ${recommendation} - Medium AI confidence`;
+    } else {
+      return `WEAK: ${recommendation} - Low AI confidence`;
     }
   }
 
@@ -430,7 +626,35 @@ export class TradingBot {
           importance: comprehensiveInfo.shortEntry.importance
         } : null
       },
-      scalpTrade: scalpTradeStatus
+      scalpTrade: scalpTradeStatus,
+      aiAnalysis: this.lastAIAnalysis ? {
+        overallConfidence: this.lastAIAnalysis.overallConfidence.toFixed(3),
+        tradingRecommendation: this.lastAIAnalysis.tradingRecommendation,
+        sentiment: {
+          overall: this.lastAIAnalysis.sentiment.overallSentiment,
+          score: this.lastAIAnalysis.sentiment.sentimentScore.toFixed(3),
+          confidence: this.lastAIAnalysis.sentiment.confidence.toFixed(3)
+        },
+        marketRegime: {
+          regime: this.lastAIAnalysis.marketRegime.regime,
+          confidence: this.lastAIAnalysis.marketRegime.confidence.toFixed(3),
+          volatility: this.lastAIAnalysis.marketRegime.volatility.toFixed(3),
+          trendStrength: this.lastAIAnalysis.marketRegime.trendStrength.toFixed(3)
+        },
+        riskAssessment: {
+          overallRisk: this.lastAIAnalysis.riskAssessment.overallRisk,
+          riskScore: this.lastAIAnalysis.riskAssessment.riskScore.toFixed(3),
+          recommendations: {
+            positionSize: this.lastAIAnalysis.riskAssessment.recommendations.positionSize.toFixed(2),
+            leverage: this.lastAIAnalysis.riskAssessment.recommendations.leverage.toFixed(2),
+            hedgeRatio: this.lastAIAnalysis.riskAssessment.recommendations.hedgeRatio.toFixed(2),
+            entryDelay: this.lastAIAnalysis.riskAssessment.recommendations.entryDelay
+          }
+        },
+        patternsFound: this.lastAIAnalysis.patterns.length,
+        correlations: this.lastAIAnalysis.correlations.length,
+        timestamp: this.lastAIAnalysis.timestamp.toISOString()
+      } : null
     });
     } catch (error) {
       logger.error('Error in logCurrentState', error);
@@ -528,5 +752,30 @@ export class TradingBot {
       averageWin,
       averageLoss
     };
+  }
+
+  /**
+   * Get current AI analysis
+   */
+  getCurrentAIAnalysis(): AIAnalysisResult | null {
+    return this.lastAIAnalysis;
+  }
+
+  /**
+   * Get AI service statistics
+   */
+  getAIStats(): { apiUsage: any; cacheSize: number } {
+    return {
+      apiUsage: this.aiService.getApiUsageStats(),
+      cacheSize: 0 // Cache size would need to be exposed from AIService
+    };
+  }
+
+  /**
+   * Clear AI cache
+   */
+  clearAICache(): void {
+    this.aiService.clearCache();
+    logger.info('AI cache cleared');
   }
 }

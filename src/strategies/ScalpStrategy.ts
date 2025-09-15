@@ -8,9 +8,11 @@ import {
   MarketData, 
   TechnicalIndicators, 
   Position, 
-  TradingSignal
+  TradingSignal,
+  AIAnalysisResult
 } from '../types';
 import { positionSizing, leverageSettings } from '../config';
+import { AIService } from '../services/AIService';
 
 export class ScalpStrategy {
   private binanceService: BinanceService;
@@ -18,6 +20,7 @@ export class ScalpStrategy {
   private dynamicLevels: DynamicLevels;
   private comprehensiveLevels: ComprehensiveLevels;
   private positionManager: PositionManager;
+  private aiService: AIService;
   private priceHistory: Map<string, Array<{price: number, timestamp: number}>> = new Map();
   
   
@@ -43,11 +46,13 @@ export class ScalpStrategy {
     binanceService: BinanceService,
     technicalAnalysis: TechnicalAnalysis,
     dynamicLevels: DynamicLevels,
-    positionManager: PositionManager
+    positionManager: PositionManager,
+    aiService?: AIService
   ) {
     this.binanceService = binanceService;
     this.technicalAnalysis = technicalAnalysis;
     this.dynamicLevels = dynamicLevels;
+    this.aiService = aiService || new AIService({} as any); // Fallback if no AI service provided
     this.comprehensiveLevels = new ComprehensiveLevels();
     this.positionManager = positionManager;
   }
@@ -64,7 +69,7 @@ export class ScalpStrategy {
   /**
    * Execute scalp strategy
    */
-async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[], marketData15m: MarketData[]): Promise<TradingSignal[]> {
+async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[], marketData15m: MarketData[], aiAnalysis?: AIAnalysisResult | null): Promise<TradingSignal[]> {
     const signals: TradingSignal[] = [];
     const currentPrice = await this.binanceService.getCurrentPrice();
     

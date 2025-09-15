@@ -5,13 +5,15 @@ import {
   TechnicalIndicators,
   SupportResistanceLevels,
   PositionSizing,
-  LeverageSettings
+  LeverageSettings,
+  AIAnalysisResult
 } from '../types';
 import { BinanceService } from '../services/BinanceService';
 import { TechnicalAnalysis } from '../services/TechnicalAnalysis';
 import { DynamicLevels } from '../services/DynamicLevels';
 import { ComprehensiveLevels } from '../services/ComprehensiveLevels';
 import { VolumeAnalysis, VolumeAnalysisResult } from '../services/VolumeAnalysis';
+import { AIService } from '../services/AIService';
 import { logger } from '../utils/logger';
 
 export class HedgeStrategy {
@@ -21,6 +23,7 @@ export class HedgeStrategy {
   private dynamicLevels: DynamicLevels;
   private comprehensiveLevels: ComprehensiveLevels;
   private volumeAnalysis: VolumeAnalysis;
+  private aiService: AIService;
   private positionSizing: PositionSizing;
   private leverageSettings: LeverageSettings;
   private currentPositions: Position[] = [];
@@ -34,7 +37,8 @@ export class HedgeStrategy {
     supportResistanceLevels: SupportResistanceLevels,
     positionSizing: PositionSizing,
     leverageSettings: LeverageSettings,
-    dynamicLevels?: DynamicLevels
+    dynamicLevels?: DynamicLevels,
+    aiService?: AIService
   ) {
     this.binanceService = binanceService;
     this.technicalAnalysis = technicalAnalysis;
@@ -42,6 +46,7 @@ export class HedgeStrategy {
     this.dynamicLevels = dynamicLevels || new DynamicLevels();
     this.comprehensiveLevels = new ComprehensiveLevels();
     this.volumeAnalysis = new VolumeAnalysis();
+    this.aiService = aiService || new AIService({} as any); // Fallback if no AI service provided
     this.positionSizing = positionSizing;
     this.leverageSettings = leverageSettings;
   }
@@ -49,7 +54,7 @@ export class HedgeStrategy {
   /**
    * Main strategy execution method
    */
-  async executeStrategy(marketData4h: MarketData[], marketData1h: MarketData[]): Promise<TradingSignal[]> {
+  async executeStrategy(marketData4h: MarketData[], marketData1h: MarketData[], aiAnalysis?: AIAnalysisResult | null): Promise<TradingSignal[]> {
     const signals: TradingSignal[] = [];
 
     try {
@@ -73,8 +78,8 @@ export class HedgeStrategy {
         marketData1h
       );
 
-      // Check for entry signals (with volume analysis for scalp activation)
-      const entrySignal = await this.checkEntrySignal(currentPrice, indicators4h, indicators1h, volumeAnalysis);
+      // Check for entry signals (with volume analysis for scalp activation and AI insights)
+      const entrySignal = await this.checkEntrySignal(currentPrice, indicators4h, indicators1h, volumeAnalysis, aiAnalysis);
       if (entrySignal) {
         signals.push(entrySignal);
       }
@@ -105,7 +110,8 @@ export class HedgeStrategy {
     currentPrice: number, 
     indicators4h: TechnicalIndicators, 
     indicators1h: TechnicalIndicators,
-    volumeAnalysis: VolumeAnalysisResult
+    volumeAnalysis: VolumeAnalysisResult,
+    aiAnalysis?: AIAnalysisResult | null
   ): Promise<TradingSignal | null> {
     
     // Check if we already have an anchor position
@@ -124,26 +130,46 @@ export class HedgeStrategy {
 
     // Check for resistance breakout (LONG anchor)
     if (this.isResistanceBreakout(currentPrice, indicators4h, indicators1h)) {
-      return {
-        type: 'ENTRY',
-        position: 'LONG',
+      const signal = {
+        type: 'ENTRY' as const,
+        position: 'LONG' as const,
         price: currentPrice,
         confidence: this.calculateConfidence(indicators4h, indicators1h),
         reason: 'Resistance breakout with volume confirmation',
         timestamp: new Date()
       };
+
+      // Apply AI filtering
+      if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
+        return signal;
+      } else {
+        logger.info('🤖 AI filtered out LONG entry signal', { 
+          originalConfidence: signal.confidence,
+          aiReason: this.getAIFilterReason(signal, aiAnalysis)
+        });
+      }
     }
 
     // Check for support breakdown (SHORT anchor)
     if (this.isSupportBreakdown(currentPrice, indicators4h, indicators1h)) {
-      return {
-        type: 'ENTRY',
-        position: 'SHORT',
+      const signal = {
+        type: 'ENTRY' as const,
+        position: 'SHORT' as const,
         price: currentPrice,
         confidence: this.calculateConfidence(indicators4h, indicators1h),
         reason: 'Support breakdown with volume confirmation',
         timestamp: new Date()
       };
+
+      // Apply AI filtering
+      if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
+        return signal;
+      } else {
+        logger.info('🤖 AI filtered out SHORT entry signal', { 
+          originalConfidence: signal.confidence,
+          aiReason: this.getAIFilterReason(signal, aiAnalysis)
+        });
+      }
     }
 
     return null;
@@ -2152,5 +2178,124 @@ export class HedgeStrategy {
     // Simple RSI rising check - in real implementation, you'd track RSI history
     // For now, we'll use the current RSI value and assume it's rising if oversold
     return indicators1h.rsi < 30; // RSI oversold suggests potential rise
+  }
+
+  /**
+   * Determine if signal should be executed based on AI analysis
+   */
+  private shouldExecuteSignalWithAI(signal: TradingSignal, aiAnalysis?: AIAnalysisResult | null): boolean {
+    if (!aiAnalysis) {
+      return true; // Execute if no AI analysis available
+    }
+
+    // Check for extreme risk conditions
+    if (aiAnalysis.riskAssessment.overallRisk === 'EXTREME') {
+      logger.warn('🤖 Signal blocked: Extreme market risk detected');
+      return false;
+    }
+
+    // Check sentiment alignment
+    const sentimentScore = aiAnalysis.sentiment.sentimentScore;
+    if (signal.position === 'LONG' && sentimentScore < -0.3) {
+      logger.warn('🤖 Signal blocked: Bearish sentiment opposes LONG position');
+      return false;
+    }
+    if (signal.position === 'SHORT' && sentimentScore > 0.3) {
+      logger.warn('🤖 Signal blocked: Bullish sentiment opposes SHORT position');
+      return false;
+    }
+
+    // Check market regime alignment
+    const regime = aiAnalysis.marketRegime.regime;
+    if (signal.position === 'LONG' && regime === 'TRENDING_BEAR') {
+      logger.warn('🤖 Signal blocked: Bear market regime opposes LONG position');
+      return false;
+    }
+    if (signal.position === 'SHORT' && regime === 'TRENDING_BULL') {
+      logger.warn('🤖 Signal blocked: Bull market regime opposes SHORT position');
+      return false;
+    }
+
+    // Check overall AI confidence
+    if (aiAnalysis.overallConfidence < 0.3) {
+      logger.warn('🤖 Signal blocked: Low AI confidence');
+      return false;
+    }
+
+    // Check trading recommendation
+    const recommendation = aiAnalysis.tradingRecommendation;
+    if (signal.position === 'LONG' && (recommendation === 'SELL' || recommendation === 'STRONG_SELL')) {
+      logger.warn('🤖 Signal blocked: AI recommends SELL');
+      return false;
+    }
+    if (signal.position === 'SHORT' && (recommendation === 'BUY' || recommendation === 'STRONG_BUY')) {
+      logger.warn('🤖 Signal blocked: AI recommends BUY');
+      return false;
+    }
+
+    // Check risk-adjusted confidence
+    const riskAdjustedConfidence = signal.confidence * (1 - aiAnalysis.riskAssessment.riskScore);
+    if (riskAdjustedConfidence < 0.4) {
+      logger.warn('🤖 Signal blocked: Risk-adjusted confidence too low', { 
+        originalConfidence: signal.confidence,
+        riskScore: aiAnalysis.riskAssessment.riskScore,
+        riskAdjustedConfidence 
+      });
+      return false;
+    }
+
+    logger.info('🤖 Signal approved by AI analysis', {
+      signalType: signal.type,
+      position: signal.position,
+      aiConfidence: aiAnalysis.overallConfidence,
+      sentiment: aiAnalysis.sentiment.overallSentiment,
+      regime: aiAnalysis.marketRegime.regime,
+      risk: aiAnalysis.riskAssessment.overallRisk
+    });
+
+    return true;
+  }
+
+  /**
+   * Get AI filter reason for logging
+   */
+  private getAIFilterReason(signal: TradingSignal, aiAnalysis?: AIAnalysisResult | null): string {
+    if (!aiAnalysis) {
+      return 'No AI analysis available';
+    }
+
+    if (aiAnalysis.riskAssessment.overallRisk === 'EXTREME') {
+      return 'Extreme market risk';
+    }
+
+    const sentimentScore = aiAnalysis.sentiment.sentimentScore;
+    if (signal.position === 'LONG' && sentimentScore < -0.3) {
+      return 'Bearish sentiment opposes LONG';
+    }
+    if (signal.position === 'SHORT' && sentimentScore > 0.3) {
+      return 'Bullish sentiment opposes SHORT';
+    }
+
+    const regime = aiAnalysis.marketRegime.regime;
+    if (signal.position === 'LONG' && regime === 'TRENDING_BEAR') {
+      return 'Bear market regime opposes LONG';
+    }
+    if (signal.position === 'SHORT' && regime === 'TRENDING_BULL') {
+      return 'Bull market regime opposes SHORT';
+    }
+
+    if (aiAnalysis.overallConfidence < 0.3) {
+      return 'Low AI confidence';
+    }
+
+    const recommendation = aiAnalysis.tradingRecommendation;
+    if (signal.position === 'LONG' && (recommendation === 'SELL' || recommendation === 'STRONG_SELL')) {
+      return 'AI recommends SELL';
+    }
+    if (signal.position === 'SHORT' && (recommendation === 'BUY' || recommendation === 'STRONG_BUY')) {
+      return 'AI recommends BUY';
+    }
+
+    return 'Risk-adjusted confidence too low';
   }
 }

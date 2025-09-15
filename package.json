@@ -1,7 +1,7 @@
 {
   "name": "ada-futures-bot",
-  "version": "1.9.2",
-  "description": "ADA Futures Trading Bot with 4-Position Hedge System",
+  "version": "2.0.0",
+  "description": "AI-Enhanced ADA Futures Trading Bot with 4-Position Hedge System and DeepSeek Integration",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -20,6 +20,7 @@
     "multi-pair": "ts-node src/multi-pair-index.ts",
     "show-sizing": "ts-node src/scripts/show-sizing-recommendations.ts",
     "test-cross-pair": "ts-node src/scripts/test-cross-pair-limiting.ts",
+    "test-ai": "ts-node src/scripts/test-ai-integration.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "install:pnpm": "pnpm install",
@@ -27,7 +28,7 @@
     "build:pnpm": "pnpm run build",
     "start:pnpm": "pnpm run start"
   },
-  "keywords": ["trading", "bot", "crypto", "futures", "ada", "binance"],
+  "keywords": ["trading", "bot", "crypto", "futures", "ada", "binance", "ai", "artificial-intelligence", "deepseek", "machine-learning", "sentiment-analysis", "pattern-recognition"],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
@@ -38,13 +39,18 @@
     "winston": "^3.11.0",
     "technicalindicators": "^3.1.0",
     "lodash": "^4.17.21",
-    "moment": "^2.29.4"
+    "moment": "^2.29.4",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/ws": "^8.5.10",
     "@types/lodash": "^4.14.202",
     "@types/node-cron": "^3.0.11",
+    "@types/cheerio": "^0.22.35",
+    "@types/node-fetch": "^2.6.4",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",

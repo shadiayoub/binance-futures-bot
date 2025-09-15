@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '1.9.2';
+export const BOT_VERSION = '2.0.0';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,
@@ -41,18 +41,38 @@ export const VERSION_INFO = {
     'Conditional Scalp Activation Based on High-Volume Conditions',
     'Corrected Exit Logic - Primary TP Exits + Hedge System Risk Management',
     'Cross-Pair Primary Position Limiting System (Max 2 Primary Positions)',
-    'Single API Key Mode for Simplified Hedge Management'
+    'Single API Key Mode for Simplified Hedge Management',
+    'AI-Powered Market Analysis with DeepSeek API Integration',
+    'Sentiment Analysis for Market Mood Detection',
+    'Advanced Pattern Recognition for Technical Validation',
+    'Market Regime Detection for Adaptive Strategy Parameters',
+    'AI Risk Assessment and Dynamic Position Sizing',
+    'Correlation Analysis for Multi-Asset Context',
+    'AI Signal Filtering and Confidence Scoring',
+    'Intelligent Signal Enhancement with Machine Learning',
+    'Real-time AI Market Analysis (Every 2 minutes)',
+    'AI-Powered Entry/Exit Decision Making',
+    'Comprehensive AI Fallback Mechanisms',
+    'AI Configuration Management System',
+    'Advanced AI Testing and Validation Framework'
   ],
   strategies: [
     'Anchor Strategy (Bidirectional)',
     'Peak Strategy (Market Reversal Detection)',
-    'Scalp Strategy (High-Frequency Trading)'
+    'Scalp Strategy (High-Frequency Trading)',
+    'AI-Enhanced Signal Generation',
+    'Intelligent Market Regime Adaptation',
+    'AI-Powered Risk Management'
   ],
   safety: [
     'Mathematical Profit Guarantee',
     'ISOLATED Margin Mode',
     'Automatic Error Recovery',
-    'Comprehensive Logging'
+    'Comprehensive Logging',
+    'AI-Powered Risk Assessment',
+    'Intelligent Signal Filtering',
+    'AI Fallback Mechanisms',
+    'Advanced Error Handling with AI Context'
   ]
 };
 
