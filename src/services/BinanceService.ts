@@ -474,17 +474,21 @@ export class BinanceService {
   }
 
   /**
-   * Get current positions
+   * Get current positions with retry logic
    */
   async getCurrentPositions(): Promise<Position[]> {
     if (!this.client) {
       throw new Error('Binance client not initialized. Call initialize() first.');
     }
     
-    try {
-      const positions = await this.client.futuresPositionRisk({
-        symbol: this.config.tradingPair
-      });
+    const maxRetries = 3;
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const positions = await this.client.futuresPositionRisk({
+          symbol: this.config.tradingPair
+        });
 
       const activePositions = positions.filter((pos: any) => parseFloat(pos.positionAmt) !== 0);
       
@@ -570,10 +574,23 @@ export class BinanceService {
           openTime: new Date(parseInt(pos.updateTime)), // Use actual entry time
         };
       });
-    } catch (error) {
-      logger.error('Failed to get current positions', error);
-      throw error;
+      
+      } catch (error) {
+        lastError = error;
+        logger.warn(`Failed to get current positions (attempt ${attempt}/${maxRetries})`, error);
+        
+        if (attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          logger.info(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+    
+    // If we get here, all retries failed
+    logger.error('Failed to get current positions after all retries', lastError);
+    throw lastError;
   }
 
   /**
