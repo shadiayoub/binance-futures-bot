@@ -512,7 +512,8 @@ export class BinanceService {
           if (leverage >= 20) {
             positionType = positionSize > 100 ? 'ANCHOR' : 'SCALP';
           } else if (leverage >= 15) {
-            positionType = 'SCALP';
+            // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
+            positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
           } else {
             positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
           }
@@ -523,7 +524,8 @@ export class BinanceService {
             if (leverage >= 20) {
               positionType = positionSize > 100 ? 'ANCHOR' : 'SCALP';
             } else if (leverage >= 15) {
-              positionType = 'SCALP';
+              // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
+              positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
             } else {
               positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
             }
@@ -532,7 +534,8 @@ export class BinanceService {
             if (leverage >= 20) {
               positionType = positionSize > 100 ? 'ANCHOR_HEDGE' : 'SCALP_HEDGE';
             } else if (leverage >= 15) {
-              positionType = 'SCALP_HEDGE';
+              // For 15x leverage hedge, consider size: large positions are ANCHOR_HEDGE, small are SCALP_HEDGE
+              positionType = positionSize > 200 ? 'ANCHOR_HEDGE' : 'SCALP_HEDGE';
             } else {
               positionType = positionSize > 200 ? 'ANCHOR_HEDGE' : 'OPPORTUNITY_HEDGE';
             }
@@ -542,7 +545,8 @@ export class BinanceService {
           if (leverage >= 20) {
             positionType = positionSize > 100 ? 'ANCHOR_HEDGE' : 'SCALP_HEDGE';
           } else if (leverage >= 15) {
-            positionType = 'SCALP';
+            // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
+            positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
           } else {
             positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
           }

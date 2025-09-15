@@ -227,7 +227,7 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
    * Check if scalp should be closed
    */
   private shouldCloseScalp(scalpPosition: Position, currentPrice: number, indicators15m: TechnicalIndicators): boolean {
-    const profitThreshold = parseFloat(process.env.SCALP_TP_PERCENT || '0.5') / 100; // Use environment setting (default 0.5%)
+    const profitThreshold = parseFloat(process.env.SCALP_TP_PERCENT || '1.0') / 100; // Use environment setting (default 1% for frequent trades)
     const scalpProfit = this.calculateProfitPercentage(scalpPosition, currentPrice);
     
     // Only consider profit-taking if we have meaningful profit

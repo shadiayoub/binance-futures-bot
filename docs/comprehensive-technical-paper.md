@@ -890,13 +890,13 @@ private shouldTakeProfitPrimary(position: Position, currentPrice: number, indica
   
   switch (position.type) {
     case 'ANCHOR':
-      targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '2.0'); // 2% target
+      targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '1.0'); // 1% target for frequent trading
       break;
     case 'OPPORTUNITY':
-      targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.5'); // 1.5% target
+      targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.0'); // 1% target for frequent trading
       break;
     case 'SCALP':
-      targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target
+      targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target for frequent trading
       break;
     default:
       return false;

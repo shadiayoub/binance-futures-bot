@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '2.0.0';
+export const BOT_VERSION = '2.0.2';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,
@@ -54,7 +54,10 @@ export const VERSION_INFO = {
     'AI-Powered Entry/Exit Decision Making',
     'Comprehensive AI Fallback Mechanisms',
     'AI Configuration Management System',
-    'Advanced AI Testing and Validation Framework'
+    'Advanced AI Testing and Validation Framework',
+    'Frequent Trading Strategy with 1% Profit Targets',
+    'Position Size-Based Profit Calculation',
+    'Optimized Exit Logic for High-Frequency Trading'
   ],
   strategies: [
     'Anchor Strategy (Bidirectional)',
@@ -62,7 +65,9 @@ export const VERSION_INFO = {
     'Scalp Strategy (High-Frequency Trading)',
     'AI-Enhanced Signal Generation',
     'Intelligent Market Regime Adaptation',
-    'AI-Powered Risk Management'
+    'AI-Powered Risk Management',
+    'Frequent Trading Strategy (1% Profit Targets)',
+    'Position Size-Based Profit Calculation'
   ],
   safety: [
     'Mathematical Profit Guarantee',

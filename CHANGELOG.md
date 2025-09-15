@@ -2,6 +2,55 @@
 
 All notable changes to the ADA Futures Trading Bot will be documented in this file.
 
+## [2.0.2] - 2025-01-27
+
+### 🎯 Frequent Trading Strategy Update
+
+This release optimizes the bot for frequent trading with smaller, consistent profits rather than high profit per trade.
+
+### ✨ New Features
+
+#### Frequent Trading Strategy
+- **1% Profit Targets**: All position types (ANCHOR, OPPORTUNITY, SCALP) now target 1% profit for more frequent trading
+- **Position Size-Based Calculation**: Profit calculation now based on position size rather than price percentage
+- **Optimized Exit Logic**: Faster exits enable more trading opportunities while maintaining profitability
+- **Environment Variable Updates**: Updated default profit targets to 1% across all strategies
+
+### 🔧 Technical Changes
+
+#### Profit Calculation System
+- **New Method**: `calculateProfitBasedOnSize()` calculates profit as 1% of position's notional value
+- **Consistent Targets**: All position types now use 1% profit target for uniform trading frequency
+- **Enhanced Logging**: Updated profit-taking logs to reflect position size-based calculations
+
+#### Configuration Updates
+- **Environment Variables**: Updated `SCALP_TP_PERCENT` from 0.5% to 1.0%
+- **Default Values**: All profit targets now default to 1% for frequent trading
+- **Documentation**: Updated user guide and technical documentation to reflect new strategy
+
+### 📊 Strategy Impact
+
+#### Before (2.0.0)
+- ANCHOR: 2% profit target
+- OPPORTUNITY: 1.5% profit target  
+- SCALP: 0.5% profit target
+- **Result**: Higher profit per trade, fewer trading opportunities
+
+#### After (2.0.2)
+- ANCHOR: 1% profit target
+- OPPORTUNITY: 1% profit target
+- SCALP: 1% profit target
+- **Result**: Consistent 1% profit per trade, more frequent trading opportunities
+
+### 🎯 Trading Philosophy
+
+This update aligns with the philosophy of **frequent trading with consistent small profits** rather than waiting for larger price movements. The bot now:
+
+- ✅ **Enters on strong AI signals** (unchanged)
+- ✅ **Exits quickly with 1% profit** (new)
+- ✅ **Enables more frequent trading** (new)
+- ✅ **Maintains AI analysis quality** (unchanged)
+
 ## [2.0.0] - 2025-09-15
 
 ### 🚀 Major Release - AI Integration

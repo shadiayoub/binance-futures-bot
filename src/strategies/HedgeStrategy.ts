@@ -1180,33 +1180,33 @@ export class HedgeStrategy {
     
     switch (position.type) {
       case 'ANCHOR':
-        targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '2.0'); // 2% target
+        targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '1.0'); // 1% target for frequent trades
         break;
       case 'OPPORTUNITY':
-        targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.5'); // 1.5% target
+        targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.0'); // 1% target for frequent trades
         break;
       case 'SCALP':
-        targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target
+        targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target for frequent trades
         break;
       default:
         return false;
     }
 
-    // Calculate current profit percentage
-    const currentProfit = this.calculateProfitPercentage(position, currentPrice);
+    // Calculate current profit based on position size (1% target)
+    const currentProfitBasedOnSize = this.calculateProfitBasedOnSize(position, currentPrice);
     
-    // Check if we've reached the target profit
-    const hasReachedTarget = currentProfit >= targetProfit;
+    // Check if we've reached the 1% profit target based on position size
+    const hasReachedTarget = currentProfitBasedOnSize >= 100; // 100% means we've achieved 1% of position size
     
     if (hasReachedTarget) {
-      logger.info('🎯 Primary Position Take Profit Target Reached', {
+      logger.info('🎯 Primary Position Take Profit Target Reached (1% of Position Size)', {
         positionType: position.type,
-        currentProfit: currentProfit.toFixed(2) + '%',
-        targetProfit: targetProfit.toFixed(2) + '%',
+        currentProfitBasedOnSize: currentProfitBasedOnSize.toFixed(2) + '%',
+        targetProfit: '1.0% of position size',
         entryPrice: position.entryPrice,
         currentPrice: currentPrice,
         side: position.side,
-        reason: `Primary position reached ${targetProfit}% target - clean exit`
+        reason: 'Primary position reached 1% profit target based on position size - frequent trading exit'
       });
     }
     
@@ -1452,6 +1452,34 @@ export class HedgeStrategy {
     } else {
       return ((position.entryPrice - currentPrice) / position.entryPrice) * 100;
     }
+  }
+
+  /**
+   * Calculate profit based on position size (1% of position size)
+   * This is the new method for frequent trading with 1% profit target
+   */
+  private calculateProfitBasedOnSize(position: Position, currentPrice: number): number {
+    const positionSize = position.size || position.quantity;
+    const leverage = position.leverage;
+    
+    // Calculate the notional value of the position
+    const notionalValue = positionSize * position.entryPrice * leverage;
+    
+    // Calculate current PnL in absolute terms
+    let priceChange;
+    if (position.side === 'LONG') {
+      priceChange = currentPrice - position.entryPrice;
+    } else {
+      priceChange = position.entryPrice - currentPrice;
+    }
+    
+    const currentPnL = (priceChange / position.entryPrice) * notionalValue;
+    
+    // Calculate 1% of position size as target profit
+    const targetProfitAmount = notionalValue * 0.01; // 1% of position size
+    
+    // Return the percentage of target profit achieved
+    return (currentPnL / targetProfitAmount) * 100;
   }
 
   /**

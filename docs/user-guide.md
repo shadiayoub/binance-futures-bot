@@ -1024,38 +1024,38 @@ OPPORTUNITY_HEDGE_SIZE=0.30    # 30% of current balance
 
 The bot now includes **intelligent profit-taking** with **price peak detection** that automatically exits winning positions at optimal levels using the comprehensive 51-level system:
 
-#### **Anchor Position Profit-Taking**
-- **Minimum Profit**: 2% required before considering exit
+#### **Anchor Position Profit-Taking (FREQUENT TRADING STRATEGY)**
+- **Minimum Profit**: 1% of position size required (frequent trading approach)
 - **Level Requirements**: Must hit HIGH or CRITICAL importance levels
 - **Primary Confirmation**: RSI overbought/oversold OR volume < 0.1 (consistent with entry)
 - **Fallback Protection**: Price peak/trough detection (never miss opportunities!)
 - **Price Tolerance**: 0.5% around resistance/support levels
 
 **Example**: LONG anchor at $0.86, price moves to $0.89 (3.49% profit)
-- ✅ **Above 2% threshold**
+- ✅ **Above 1% of position size threshold**
 - ✅ **Near HIGH resistance level** ($0.8922)
 - ✅ **RSI 75** (overbought)
 - ✅ **Volume 0.05** (< 0.1 threshold, consistent with entry)
-- **Result**: Bot takes profit at optimal level!
+- **Result**: Bot takes profit at optimal level with 1% of position size!
 
 **Critical Scenario**: Price hits $0.8975 but RSI = 65 (not overbought)
-- ✅ **Above 2% threshold**
+- ✅ **Above 1% of position size threshold**
 - ✅ **Near HIGH resistance level** ($0.8922)
 - ❌ **RSI 65** (not overbought)
 - ❌ **Volume 0.15** (above threshold)
 - ✅ **Price Peak Detected**: Price peaked at $0.8975, now declining 0.3%
 - **Result**: Bot exits with profit using peak detection! 🎯
 
-#### **Opportunity Position Profit-Taking (UPDATED!)**
-- **Minimum Profit**: 1.5% required (more aggressive)
+#### **Opportunity Position Profit-Taking (FREQUENT TRADING STRATEGY)**
+- **Minimum Profit**: 1% of position size required (frequent trading approach)
 - **Level Requirements**: Must hit MEDIUM, HIGH, or CRITICAL importance levels
 - **Primary Confirmation**: RSI overbought/oversold OR volume < 0.1 (consistent with entry)
 - **Fallback Protection**: Price peak/trough detection (never miss opportunities!)
 - **Price Tolerance**: 0.5% around resistance/support levels
 - **Peak Detection**: Same 0.3% threshold as anchor positions
 
-#### **Scalp Position Profit-Taking (BIDIRECTIONAL!)**
-- **Minimum Profit**: 0.27% required (scalp-specific target)
+#### **Scalp Position Profit-Taking (FREQUENT TRADING STRATEGY!)**
+- **Minimum Profit**: 1% of position size required (frequent trading approach)
 - **Level Requirements**: Must hit support/resistance levels
 - **Primary Confirmation**: RSI overbought/oversold OR volume < 0.1 (consistent with entry)
 - **Fallback Protection**: Price peak/trough detection (more sensitive for scalp)
