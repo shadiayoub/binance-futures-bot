@@ -11,6 +11,7 @@ import { BinanceService } from '../services/BinanceService';
 import { TechnicalAnalysis } from '../services/TechnicalAnalysis';
 import { DynamicLevels } from '../services/DynamicLevels';
 import { ComprehensiveLevels } from '../services/ComprehensiveLevels';
+import { VolumeAnalysis, VolumeAnalysisResult } from '../services/VolumeAnalysis';
 import { logger } from '../utils/logger';
 
 export class HedgeStrategy {
@@ -19,6 +20,7 @@ export class HedgeStrategy {
   private supportResistanceLevels: SupportResistanceLevels;
   private dynamicLevels: DynamicLevels;
   private comprehensiveLevels: ComprehensiveLevels;
+  private volumeAnalysis: VolumeAnalysis;
   private positionSizing: PositionSizing;
   private leverageSettings: LeverageSettings;
   private currentPositions: Position[] = [];
@@ -39,6 +41,7 @@ export class HedgeStrategy {
     this.supportResistanceLevels = supportResistanceLevels;
     this.dynamicLevels = dynamicLevels || new DynamicLevels();
     this.comprehensiveLevels = new ComprehensiveLevels();
+    this.volumeAnalysis = new VolumeAnalysis();
     this.positionSizing = positionSizing;
     this.leverageSettings = leverageSettings;
   }
@@ -63,8 +66,15 @@ export class HedgeStrategy {
       }
       const currentPrice = lastMarketData.price;
 
-      // Check for entry signals
-      const entrySignal = await this.checkEntrySignal(currentPrice, indicators4h, indicators1h);
+      // Analyze volume conditions for scalp activation
+      const volumeAnalysis = this.shouldActivateScalpStrategy(
+        'ADAUSDT', // TODO: Make this dynamic based on trading pair
+        lastMarketData.volume,
+        marketData1h
+      );
+
+      // Check for entry signals (with volume analysis for scalp activation)
+      const entrySignal = await this.checkEntrySignal(currentPrice, indicators4h, indicators1h, volumeAnalysis);
       if (entrySignal) {
         signals.push(entrySignal);
       }
@@ -73,7 +83,7 @@ export class HedgeStrategy {
       const hedgeSignals = await this.checkHedgeSignals(currentPrice, indicators1h);
       signals.push(...hedgeSignals);
 
-      // Check for exit signals
+      // Check for exit signals (only hedge exits - no early profit taking)
       const exitSignals = await this.checkExitSignals(currentPrice, indicators1h);
       signals.push(...exitSignals);
 
@@ -94,13 +104,22 @@ export class HedgeStrategy {
   private async checkEntrySignal(
     currentPrice: number, 
     indicators4h: TechnicalIndicators, 
-    indicators1h: TechnicalIndicators
+    indicators1h: TechnicalIndicators,
+    volumeAnalysis: VolumeAnalysisResult
   ): Promise<TradingSignal | null> {
     
     // Check if we already have an anchor position
     const hasAnchorPosition = this.currentPositions.some(pos => pos.type === 'ANCHOR' && pos.status === 'OPEN');
     if (hasAnchorPosition) {
       return null;
+    }
+
+    // Check for scalp signals first (if volume conditions are met)
+    if (volumeAnalysis.shouldActivateScalp && volumeAnalysis.scalpParameters) {
+      const scalpSignal = this.checkScalpSignal(currentPrice, indicators4h, indicators1h, volumeAnalysis);
+      if (scalpSignal) {
+        return scalpSignal;
+      }
     }
 
     // Check for resistance breakout (LONG anchor)
@@ -128,6 +147,98 @@ export class HedgeStrategy {
     }
 
     return null;
+  }
+
+  /**
+   * Check for scalp signals based on volume conditions
+   */
+  private checkScalpSignal(
+    currentPrice: number,
+    indicators4h: TechnicalIndicators,
+    indicators1h: TechnicalIndicators,
+    volumeAnalysis: VolumeAnalysisResult
+  ): TradingSignal | null {
+    if (!volumeAnalysis.scalpParameters) {
+      return null;
+    }
+
+    const scalpParams = volumeAnalysis.scalpParameters;
+
+    // Check for scalp entry conditions (more sensitive than anchor)
+    const isScalpLong = this.isScalpLongSignal(currentPrice, indicators4h, indicators1h);
+    const isScalpShort = this.isScalpShortSignal(currentPrice, indicators4h, indicators1h);
+
+    if (isScalpLong) {
+      logger.info('🎯 High-Volume Scalp LONG Signal Generated', {
+        currentPrice,
+        volumeRatio: volumeAnalysis.volumeRatio.toFixed(2),
+        scalpParameters: scalpParams,
+        reason: `High volume scalp LONG - volume ${volumeAnalysis.volumeRatio.toFixed(2)}x average`
+      });
+
+      return {
+        type: 'ENTRY',
+        position: 'LONG',
+        price: currentPrice,
+        confidence: 0.85,
+        reason: `High-volume scalp LONG (${volumeAnalysis.volumeRatio.toFixed(2)}x volume) - ${scalpParams.tpPercent}% target`,
+        timestamp: new Date(),
+        symbol: 'ADAUSDT' // TODO: Make dynamic
+      };
+    }
+
+    if (isScalpShort) {
+      logger.info('🎯 High-Volume Scalp SHORT Signal Generated', {
+        currentPrice,
+        volumeRatio: volumeAnalysis.volumeRatio.toFixed(2),
+        scalpParameters: scalpParams,
+        reason: `High volume scalp SHORT - volume ${volumeAnalysis.volumeRatio.toFixed(2)}x average`
+      });
+
+      return {
+        type: 'ENTRY',
+        position: 'SHORT',
+        price: currentPrice,
+        confidence: 0.85,
+        reason: `High-volume scalp SHORT (${volumeAnalysis.volumeRatio.toFixed(2)}x volume) - ${scalpParams.tpPercent}% target`,
+        timestamp: new Date(),
+        symbol: 'ADAUSDT' // TODO: Make dynamic
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Check for scalp LONG signal conditions
+   */
+  private isScalpLongSignal(
+    currentPrice: number,
+    indicators4h: TechnicalIndicators,
+    indicators1h: TechnicalIndicators
+  ): boolean {
+    // More sensitive conditions for scalp
+    const rsiOversold = indicators1h.rsi < 35; // More oversold than anchor
+    const emaBullish = indicators1h.emaFast > indicators1h.emaSlow;
+    const volumeSpike = indicators1h.volumeSma > 0; // Volume spike check (simplified)
+    
+    return rsiOversold && emaBullish && volumeSpike;
+  }
+
+  /**
+   * Check for scalp SHORT signal conditions
+   */
+  private isScalpShortSignal(
+    currentPrice: number,
+    indicators4h: TechnicalIndicators,
+    indicators1h: TechnicalIndicators
+  ): boolean {
+    // More sensitive conditions for scalp
+    const rsiOverbought = indicators1h.rsi > 65; // More overbought than anchor
+    const emaBearish = indicators1h.emaFast < indicators1h.emaSlow;
+    const volumeSpike = indicators1h.volumeSma > 0; // Volume spike check (simplified)
+    
+    return rsiOverbought && emaBearish && volumeSpike;
   }
 
   /**
@@ -247,37 +358,38 @@ export class HedgeStrategy {
       }
     }
 
-    // Check for profit-taking signals on anchor positions
+    // Check for primary position take profit exits (original targets)
+    // This is the normal exit path when primary position reaches its target
     const anchorPositions = this.currentPositions.filter(pos => 
       pos.type === 'ANCHOR' && pos.status === 'OPEN'
     );
 
     for (const anchorPosition of anchorPositions) {
-      if (this.shouldTakeProfitAnchor(anchorPosition, currentPrice, indicators1h)) {
+      if (this.shouldTakeProfitPrimary(anchorPosition, currentPrice, indicators1h)) {
         signals.push({
           type: 'EXIT',
           position: anchorPosition.side,
           price: currentPrice,
-          confidence: 0.8,
-          reason: 'Anchor position reached profit-taking level',
+          confidence: 0.9,
+          reason: 'Primary position reached take profit target - clean exit',
           timestamp: new Date()
         });
       }
     }
 
-    // Check for profit-taking signals on peak positions
+    // Check for peak position take profit exits (original targets)
     const peakPositions = this.currentPositions.filter(pos => 
       pos.type === 'OPPORTUNITY' && pos.status === 'OPEN'
     );
 
     for (const peakPosition of peakPositions) {
-      if (this.shouldTakeProfitOpportunity(peakPosition, currentPrice, indicators1h)) {
+      if (this.shouldTakeProfitPrimary(peakPosition, currentPrice, indicators1h)) {
         signals.push({
           type: 'EXIT',
           position: peakPosition.side,
           price: currentPrice,
-          confidence: 0.8,
-          reason: 'Peak position reached profit-taking level',
+          confidence: 0.9,
+          reason: 'Peak position reached take profit target - clean exit',
           timestamp: new Date()
         });
       }
@@ -447,6 +559,184 @@ export class HedgeStrategy {
   }
 
   /**
+   * Calculate liquidity zones with buffer zone between S/R levels
+   * Returns protection zone (30% from entry, 70% from liquidation) with buffer zone
+   */
+  private calculateLiquidityZones(entryPrice: number, liquidationPrice: number, side: 'LONG' | 'SHORT', currentPrice: number): {
+    protectionZoneStart: number;
+    protectionZoneEnd: number;
+    bufferZoneStart: number;
+    bufferZoneEnd: number;
+    isInProtectionZone: boolean;
+    isInBufferZone: boolean;
+    distanceFromEntry: number;
+    distanceFromLiquidation: number;
+  } {
+    if (!liquidationPrice || liquidationPrice <= 0) {
+      logger.warn('Invalid liquidation price for zone calculation', { entryPrice, liquidationPrice });
+      return {
+        protectionZoneStart: 0,
+        protectionZoneEnd: 0,
+        bufferZoneStart: 0,
+        bufferZoneEnd: 0,
+        isInProtectionZone: false,
+        isInBufferZone: false,
+        distanceFromEntry: 0,
+        distanceFromLiquidation: 0
+      };
+    }
+
+    const totalDistance = Math.abs(entryPrice - liquidationPrice);
+    const protectionZoneSize = totalDistance * 0.30; // 30% of total distance
+    const looseZoneSize = totalDistance * 0.70; // 70% of total distance
+    const bufferZoneSize = totalDistance * 0.15; // 15% buffer zone between S/R and protection
+
+    let protectionZoneStart: number;
+    let protectionZoneEnd: number;
+    let bufferZoneStart: number;
+    let bufferZoneEnd: number;
+
+    if (side === 'LONG') {
+      // For LONG: protection zone is 30% from entry towards liquidation
+      protectionZoneStart = entryPrice - protectionZoneSize;
+      protectionZoneEnd = liquidationPrice + looseZoneSize;
+      
+      // Buffer zone is between current S/R and protection zone (loose area)
+      bufferZoneStart = protectionZoneStart - bufferZoneSize;
+      bufferZoneEnd = protectionZoneStart;
+    } else {
+      // For SHORT: protection zone is 30% from entry towards liquidation
+      protectionZoneStart = liquidationPrice - looseZoneSize;
+      protectionZoneEnd = entryPrice + protectionZoneSize;
+      
+      // Buffer zone is between current S/R and protection zone (loose area)
+      bufferZoneStart = protectionZoneEnd;
+      bufferZoneEnd = protectionZoneEnd + bufferZoneSize;
+    }
+
+    // Check if current price is in protection zone or buffer zone
+    const isInProtectionZone = currentPrice >= protectionZoneStart && currentPrice <= protectionZoneEnd;
+    const isInBufferZone = currentPrice >= bufferZoneStart && currentPrice <= bufferZoneEnd;
+
+    // Calculate distances as percentages
+    const distanceFromEntry = Math.abs(currentPrice - entryPrice) / entryPrice * 100;
+    const distanceFromLiquidation = Math.abs(currentPrice - liquidationPrice) / liquidationPrice * 100;
+
+    logger.info('🎯 Liquidity Zone Calculation with Buffer Zone', {
+      side,
+      entryPrice: entryPrice.toFixed(4),
+      liquidationPrice: liquidationPrice.toFixed(4),
+      currentPrice: currentPrice.toFixed(4),
+      totalDistance: totalDistance.toFixed(4),
+      protectionZoneStart: protectionZoneStart.toFixed(4),
+      protectionZoneEnd: protectionZoneEnd.toFixed(4),
+      bufferZoneStart: bufferZoneStart.toFixed(4),
+      bufferZoneEnd: bufferZoneEnd.toFixed(4),
+      protectionZoneSize: protectionZoneSize.toFixed(4),
+      looseZoneSize: looseZoneSize.toFixed(4),
+      bufferZoneSize: bufferZoneSize.toFixed(4),
+      isInProtectionZone,
+      isInBufferZone,
+      distanceFromEntry: distanceFromEntry.toFixed(2) + '%',
+      distanceFromLiquidation: distanceFromLiquidation.toFixed(2) + '%'
+    });
+
+    return {
+      protectionZoneStart,
+      protectionZoneEnd,
+      bufferZoneStart,
+      bufferZoneEnd,
+      isInProtectionZone,
+      isInBufferZone,
+      distanceFromEntry,
+      distanceFromLiquidation
+    };
+  }
+
+  /**
+   * Check if VWAP signals should be active in buffer zone
+   */
+  private shouldActivateVWAPSignals(currentPrice: number, entryPrice: number, liquidationPrice: number, side: 'LONG' | 'SHORT'): boolean {
+    const liquidityZones = this.calculateLiquidityZones(entryPrice, liquidationPrice, side, currentPrice);
+    
+    // VWAP signals are active ONLY in buffer zone (no-trade zone)
+    const vwapActive = liquidityZones.isInBufferZone;
+    
+    logger.info('📊 VWAP Signal Activation Check', {
+      currentPrice: currentPrice.toFixed(4),
+      entryPrice: entryPrice.toFixed(4),
+      liquidationPrice: liquidationPrice.toFixed(4),
+      side,
+      isInBufferZone: liquidityZones.isInBufferZone,
+      isInProtectionZone: liquidityZones.isInProtectionZone,
+      vwapActive,
+      vwapReason: vwapActive ? 
+        'Price in buffer zone - VWAP signals active (no-trade zone)' : 
+        'Price not in buffer zone - VWAP signals inactive'
+    });
+    
+    return vwapActive;
+  }
+
+  /**
+   * Check if scalp strategy should be activated based on volume conditions
+   */
+  private shouldActivateScalpStrategy(
+    symbol: string,
+    currentVolume: number,
+    marketData: MarketData[]
+  ): VolumeAnalysisResult {
+    return this.volumeAnalysis.analyzeVolumeForScalp(symbol, currentVolume, marketData);
+  }
+
+  /**
+   * Check VWAP signal confirmation for hedge entry
+   * Single VWAP confirmation required before hedge execution
+   */
+  private checkVWAPSignalConfirmation(currentPrice: number, indicators1h: TechnicalIndicators, side: 'LONG' | 'SHORT'): boolean {
+    const vwap = indicators1h.vwap;
+    const vwapDistance = indicators1h.vwapDistance;
+    
+    if (!vwap || vwap === 0) {
+      logger.warn('⚠️ VWAP not available for signal confirmation', {
+        currentPrice: currentPrice.toFixed(4),
+        vwap,
+        side
+      });
+      return false;
+    }
+
+    // VWAP signal confirmation logic
+    let vwapSignal = false;
+    let signalReason = '';
+
+    if (side === 'LONG') {
+      // For LONG hedge: VWAP signal when price is below VWAP (oversold condition)
+      vwapSignal = currentPrice < vwap && vwapDistance < -0.5; // Price 0.5% below VWAP
+      signalReason = vwapSignal ? 
+        `Price ${currentPrice.toFixed(4)} below VWAP ${vwap.toFixed(4)} (${vwapDistance.toFixed(2)}%) - oversold signal` :
+        `Price ${currentPrice.toFixed(4)} not below VWAP ${vwap.toFixed(4)} (${vwapDistance.toFixed(2)}%) - no oversold signal`;
+    } else {
+      // For SHORT hedge: VWAP signal when price is above VWAP (overbought condition)
+      vwapSignal = currentPrice > vwap && vwapDistance > 0.5; // Price 0.5% above VWAP
+      signalReason = vwapSignal ? 
+        `Price ${currentPrice.toFixed(4)} above VWAP ${vwap.toFixed(4)} (${vwapDistance.toFixed(2)}%) - overbought signal` :
+        `Price ${currentPrice.toFixed(4)} not above VWAP ${vwap.toFixed(4)} (${vwapDistance.toFixed(2)}%) - no overbought signal`;
+    }
+
+    logger.info('📊 VWAP Signal Confirmation Check', {
+      currentPrice: currentPrice.toFixed(4),
+      vwap: vwap.toFixed(4),
+      vwapDistance: vwapDistance.toFixed(2) + '%',
+      side,
+      vwapSignal,
+      signalReason
+    });
+
+    return vwapSignal;
+  }
+
+  /**
    * Check if we should hedge the anchor position
    */
   private shouldHedgeAnchor(currentPrice: number, indicators1h: TechnicalIndicators): boolean {
@@ -463,9 +753,17 @@ export class HedgeStrategy {
       return false;
     }
 
+    // Calculate liquidity zones for zone-based hedging
+    const liquidityZones = this.calculateLiquidityZones(
+      anchorPosition.entryPrice, 
+      anchorPosition.liquidationPrice || 0, 
+      anchorPosition.side, 
+      currentPrice
+    );
+
     // Check hedge conditions based on anchor side
     if (anchorPosition.side === 'LONG') {
-      // For LONG anchor: hedge when price drops below first support
+      // For LONG anchor: hedge when price drops below first support OR enters protection zone
       let isBelowFirstSupport = false;
       let nearestSupportPrice = 0;
 
@@ -489,7 +787,14 @@ export class HedgeStrategy {
           useDynamicLevels: true,
           supportLevelsCount: supportLevels.length,
           sortedSupportsCount: sortedSupports.length,
-          strongestSupportPriceFromArray: sortedSupports.length > 0 ? sortedSupports[0]?.price || 0 : 0
+          strongestSupportPriceFromArray: sortedSupports.length > 0 ? sortedSupports[0]?.price || 0 : 0,
+          liquidityZones: {
+            protectionZoneStart: liquidityZones.protectionZoneStart.toFixed(4),
+            protectionZoneEnd: liquidityZones.protectionZoneEnd.toFixed(4),
+            isInProtectionZone: liquidityZones.isInProtectionZone,
+            distanceFromEntry: liquidityZones.distanceFromEntry.toFixed(2) + '%',
+            distanceFromLiquidation: liquidityZones.distanceFromLiquidation.toFixed(2) + '%'
+          }
         });
       } else {
         // Use static support levels - price below first support
@@ -504,7 +809,32 @@ export class HedgeStrategy {
         });
       }
 
-      return isBelowFirstSupport;
+      // Zone-based hedging: hedge ONLY if price is in protection zone (NOT buffer zone)
+      // Buffer zone is a "no-trade zone" to prevent frequent triggers
+      const isInProtectionZone = liquidityZones.isInProtectionZone && !liquidityZones.isInBufferZone;
+      
+      // VWAP signal confirmation for hedge entry
+      const vwapConfirmation = this.checkVWAPSignalConfirmation(currentPrice, indicators1h, 'LONG');
+      
+      const shouldHedge = isInProtectionZone && vwapConfirmation;
+      
+      logger.info('🎯 LONG Anchor Hedge Decision with VWAP Confirmation', {
+        currentPrice: currentPrice.toFixed(4),
+        isBelowFirstSupport,
+        isInProtectionZone: liquidityZones.isInProtectionZone,
+        isInBufferZone: liquidityZones.isInBufferZone,
+        vwapConfirmation,
+        shouldHedge,
+        hedgeReason: shouldHedge ? 
+          'Price in protection zone with VWAP confirmation' : 
+          !isInProtectionZone ? 
+            (liquidityZones.isInBufferZone ? 
+              'Price in buffer zone (no-trade zone - VWAP signals only)' : 
+              'Price not in protection zone') :
+            'VWAP signal confirmation failed'
+      });
+      
+      return shouldHedge;
     } else {
       // For SHORT anchor: hedge when price rises above first resistance
       let isAboveFirstResistance = false;
@@ -542,7 +872,32 @@ export class HedgeStrategy {
         });
       }
 
-      return isAboveFirstResistance;
+      // Zone-based hedging: hedge ONLY if price is in protection zone (NOT buffer zone)
+      // Buffer zone is a "no-trade zone" to prevent frequent triggers
+      const isInProtectionZone = liquidityZones.isInProtectionZone && !liquidityZones.isInBufferZone;
+      
+      // VWAP signal confirmation for hedge entry
+      const vwapConfirmation = this.checkVWAPSignalConfirmation(currentPrice, indicators1h, 'SHORT');
+      
+      const shouldHedge = isInProtectionZone && vwapConfirmation;
+      
+      logger.info('🎯 SHORT Anchor Hedge Decision with VWAP Confirmation', {
+        currentPrice: currentPrice.toFixed(4),
+        isAboveFirstResistance,
+        isInProtectionZone: liquidityZones.isInProtectionZone,
+        isInBufferZone: liquidityZones.isInBufferZone,
+        vwapConfirmation,
+        shouldHedge,
+        hedgeReason: shouldHedge ? 
+          'Price in protection zone with VWAP confirmation' : 
+          !isInProtectionZone ? 
+            (liquidityZones.isInBufferZone ? 
+              'Price in buffer zone (no-trade zone - VWAP signals only)' : 
+              'Price not in protection zone') :
+            'VWAP signal confirmation failed'
+      });
+      
+      return shouldHedge;
     }
   }
 
@@ -610,28 +965,235 @@ export class HedgeStrategy {
   }
 
   /**
-   * Check if we should close a hedge position
+   * Check if we should close a hedge position based on mathematical profit/loss analysis
    */
   private shouldCloseHedge(hedgePosition: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
-    // Close hedge when price returns to its entry price
-    const priceTolerance = 0.001; // 0.1% tolerance
-    
-    if (hedgePosition.type === 'ANCHOR_HEDGE') {
-      return Math.abs(currentPrice - hedgePosition.entryPrice) / hedgePosition.entryPrice <= priceTolerance;
-    }
-    
-    if (hedgePosition.type === 'OPPORTUNITY_HEDGE') {
-      return Math.abs(currentPrice - hedgePosition.entryPrice) / hedgePosition.entryPrice <= priceTolerance;
+    // Find the corresponding primary position
+    const primaryPosition = this.currentPositions.find(pos => 
+      pos.symbol === hedgePosition.symbol &&
+      pos.side !== hedgePosition.side &&
+      (pos.type === 'ANCHOR' || pos.type === 'OPPORTUNITY') &&
+      pos.status === 'OPEN'
+    );
+
+    if (!primaryPosition) {
+      // No primary position found - close hedge to avoid orphaned position
+      logger.warn('⚠️ Closing orphaned hedge position - no primary position found', {
+        hedgePositionId: hedgePosition.id,
+        hedgeSide: hedgePosition.side,
+        currentPrice: currentPrice.toFixed(4)
+      });
+      return true;
     }
 
+    // Calculate PnL for both positions
+    const primaryPnL = this.calculateProfitPercentage(primaryPosition, currentPrice);
+    const hedgePnL = this.calculateProfitPercentage(hedgePosition, currentPrice);
+    
+    // Calculate leverage-adjusted PnL (hedge loses money faster due to higher leverage)
+    const primaryLeverage = primaryPosition.leverage;
+    const hedgeLeverage = hedgePosition.leverage;
+    const leverageRatio = hedgeLeverage / primaryLeverage; // e.g., 15/10 = 1.5
+    
+    // Adjust hedge PnL for leverage difference (hedge loses 1.5x faster than primary gains)
+    const leverageAdjustedHedgePnL = hedgePnL / leverageRatio;
+    
+    // Calculate total portfolio PnL with leverage adjustment
+    const totalPnL = primaryPnL + leverageAdjustedHedgePnL;
+    
+    // Calculate fees impact (Binance Futures: 0.045% taker fees on notional value)
+    // Fees are calculated on notional value (after leverage), not original balance
+    const baseFees = 0.09; // 0.09% of notional value (0.045% + 0.045%)
+    const estimatedFees = baseFees * leverageRatio; // Adjust for leverage difference
+    
+    // Mathematical hedge closure conditions (with leverage adjustment):
+    
+    // 1. Both positions are profitable (rare but possible)
+    if (primaryPnL > 0 && hedgePnL > 0) {
+      logger.info('💰 Both positions profitable - closing hedge for net profit', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        totalPnL: totalPnL.toFixed(2) + '%',
+        currentPrice: currentPrice.toFixed(4)
+      });
+      return true;
+    }
+    
+    // 2. Leverage-adjusted hedge profit exceeds primary loss + fees
+    if (leverageAdjustedHedgePnL > Math.abs(primaryPnL) + estimatedFees) {
+      logger.info('🎯 Leverage-adjusted hedge profit exceeds primary loss + fees - closing hedge', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        netBenefit: (leverageAdjustedHedgePnL - Math.abs(primaryPnL) - estimatedFees).toFixed(2) + '%',
+        currentPrice: currentPrice.toFixed(4)
+      });
+      return true;
+    }
+    
+    // 3. Primary position has recovered significantly (hedge served its purpose)
+    if (primaryPnL > 1.0) { // Primary position is now 1%+ profitable
+      logger.info('🔄 Primary position recovered - hedge served its purpose', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        currentPrice: currentPrice.toFixed(4),
+        reason: 'Primary position recovered - closing hedge to avoid unnecessary fees'
+      });
+      return true;
+    }
+    
+    // 4. Price has returned to original primary entry price (hedge no longer needed)
+    const priceTolerance = 0.002; // 0.2% tolerance
+    if (Math.abs(currentPrice - primaryPosition.entryPrice) / primaryPosition.entryPrice <= priceTolerance) {
+      logger.info('🎯 Price returned to primary entry - hedge no longer needed', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryEntryPrice: primaryPosition.entryPrice.toFixed(4),
+        currentPrice: currentPrice.toFixed(4),
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        reason: 'Price at primary entry - hedge protection no longer needed'
+      });
+      return true;
+    }
+    
+    // 5. Hedge is losing more than primary is gaining (leverage-adjusted analysis)
+    const hedgeLossThreshold = -2.0 * leverageRatio; // Adjust threshold for leverage difference
+    if (hedgePnL < hedgeLossThreshold && primaryPnL < 0) {
+      logger.warn('⚠️ Leverage-adjusted hedge counterproductive - closing to prevent further losses', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        hedgeLossThreshold: hedgeLossThreshold.toFixed(2) + '%',
+        currentPrice: currentPrice.toFixed(4),
+        reason: `Hedge losing ${leverageRatio.toFixed(2)}x faster than primary gains - closing to limit damage`
+      });
+      return true;
+    }
+    
+    // 6. CRITICAL: Hedge immediately starts losing due to leverage difference
+    if (hedgePnL < -0.5 && primaryPnL > 0) { // Hedge losing 0.5% while primary gaining
+      const leverageAdjustedLoss = Math.abs(hedgePnL) * leverageRatio;
+      const netLoss = leverageAdjustedLoss - primaryPnL;
+      
+      if (leverageAdjustedLoss > primaryPnL) {
+        logger.error('🚨 CRITICAL: Hedge leverage causing immediate losses - closing immediately', {
+          primaryPositionId: primaryPosition.id,
+          hedgePositionId: hedgePosition.id,
+          primaryPnL: primaryPnL.toFixed(2) + '%',
+          hedgePnL: hedgePnL.toFixed(2) + '%',
+          leverageRatio: leverageRatio.toFixed(2),
+          leverageAdjustedLoss: leverageAdjustedLoss.toFixed(2) + '%',
+          netLoss: netLoss.toFixed(2) + '%',
+          estimatedFees: estimatedFees + '%',
+          currentPrice: currentPrice.toFixed(4),
+          reason: `Hedge losing ${leverageRatio.toFixed(2)}x faster than primary gains - net loss ${netLoss.toFixed(2)}% > fees ${estimatedFees}% - immediate closure required`
+        });
+        return true;
+      }
+    }
+    
+    // 7. CRITICAL: Net loss exceeds fees (hedge counterproductive)
+    const netPortfolioLoss = Math.abs(totalPnL);
+    if (totalPnL < 0 && netPortfolioLoss > estimatedFees) {
+      logger.error('🚨 CRITICAL: Net portfolio loss exceeds fees - hedge counterproductive', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageRatio: leverageRatio.toFixed(2),
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        totalPnL: totalPnL.toFixed(2) + '%',
+        netPortfolioLoss: netPortfolioLoss.toFixed(2) + '%',
+        estimatedFees: estimatedFees + '%',
+        currentPrice: currentPrice.toFixed(4),
+        reason: `Net loss ${netPortfolioLoss.toFixed(2)}% > fees ${estimatedFees}% - hedge causing more damage than protection`
+      });
+      return true;
+    }
+
+    // Keep hedge open - it's still providing value
+    logger.debug('🔒 Keeping hedge open - still providing protection', {
+      primaryPositionId: primaryPosition.id,
+      hedgePositionId: hedgePosition.id,
+      primaryPnL: primaryPnL.toFixed(2) + '%',
+      hedgePnL: hedgePnL.toFixed(2) + '%',
+      leverageRatio: leverageRatio.toFixed(2),
+      leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+      totalPnL: totalPnL.toFixed(2) + '%',
+      currentPrice: currentPrice.toFixed(4),
+      reason: 'Hedge still providing value - keeping open (leverage-adjusted analysis)'
+    });
+    
     return false;
   }
 
   /**
-   * Check if we should take profit on anchor position using comprehensive levels
+   * Check if primary position should take profit at original target
+   * This is the normal exit path when position reaches its intended target
    */
-  private shouldTakeProfitAnchor(anchorPosition: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
-    const profitThreshold = 0.02; // Minimum 2% profit before considering exit
+  private shouldTakeProfitPrimary(position: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
+    // Get the original take profit target based on position type
+    let targetProfit: number;
+    
+    switch (position.type) {
+      case 'ANCHOR':
+        targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '2.0'); // 2% target
+        break;
+      case 'OPPORTUNITY':
+        targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.5'); // 1.5% target
+        break;
+      case 'SCALP':
+        targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target
+        break;
+      default:
+        return false;
+    }
+
+    // Calculate current profit percentage
+    const currentProfit = this.calculateProfitPercentage(position, currentPrice);
+    
+    // Check if we've reached the target profit
+    const hasReachedTarget = currentProfit >= targetProfit;
+    
+    if (hasReachedTarget) {
+      logger.info('🎯 Primary Position Take Profit Target Reached', {
+        positionType: position.type,
+        currentProfit: currentProfit.toFixed(2) + '%',
+        targetProfit: targetProfit.toFixed(2) + '%',
+        entryPrice: position.entryPrice,
+        currentPrice: currentPrice,
+        side: position.side,
+        reason: `Primary position reached ${targetProfit}% target - clean exit`
+      });
+    }
+    
+    return hasReachedTarget;
+  }
+
+  /**
+   * REMOVED: Early profit-taking logic
+   * The hedge system handles all risk management
+   * Early exits can cause unnecessary losses and fees
+   */
+  private shouldTakeProfitAnchor_REMOVED(anchorPosition: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
+    const profitThreshold = parseFloat(process.env.ANCHOR_TP_PERCENT || '1.0') / 100; // Use environment setting (default 1%)
     const currentProfit = this.calculateProfitPercentage(anchorPosition, currentPrice);
     
     // Only consider profit-taking if we have meaningful profit
@@ -738,10 +1300,12 @@ export class HedgeStrategy {
   }
 
   /**
-   * Check if we should take profit on peak position using comprehensive levels
+   * REMOVED: Early profit-taking logic
+   * The hedge system handles all risk management
+   * Early exits can cause unnecessary losses and fees
    */
-  private shouldTakeProfitOpportunity(peakPosition: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
-    const profitThreshold = 0.015; // Minimum 1.5% profit for peak positions
+  private shouldTakeProfitOpportunity_REMOVED(peakPosition: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
+    const profitThreshold = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.0') / 100; // Use environment setting (default 1%)
     const currentProfit = this.calculateProfitPercentage(peakPosition, currentPrice);
     
     // Only consider profit-taking if we have meaningful profit
@@ -939,9 +1503,10 @@ export class HedgeStrategy {
    * Check if hedge take profit is hit
    */
   private isHedgeTakeProfitHit(hedgePosition: Position, currentPrice: number): boolean {
-    // Check if hedge has achieved significant profit (e.g., 2%+)
+    // Check if hedge has achieved significant profit using environment setting
     const profitPercentage = this.calculateProfitPercentage(hedgePosition, currentPrice);
-    return profitPercentage >= 2.0; // 2% profit threshold
+    const hedgeProfitThreshold = parseFloat(process.env.HEDGE_TP_PERCENT || process.env.ANCHOR_TP_PERCENT || '1.0');
+    return profitPercentage >= hedgeProfitThreshold; // Use environment setting (default 1%)
   }
 
   /**

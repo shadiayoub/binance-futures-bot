@@ -23,14 +23,12 @@ export class BinanceService {
 
   constructor(config: TradingConfig) {
     this.config = config;
-    this.client = Binance({
-      apiKey: config.apiKey,
-      apiSecret: config.secretKey,
-      getTime: () => Date.now() + this.timeOffset,
-    });
     
     // Set price cache timeout based on config
     this.priceCacheTimeout = config.priceUpdateInterval * 1000; // Convert to milliseconds
+    
+    // Initialize client later in initialize() method after time sync
+    this.client = null as any;
   }
 
   /**
@@ -41,12 +39,40 @@ export class BinanceService {
       // First, get server time to sync
       await this.syncTime();
       
-      // Test API connection
-      const accountInfo = await this.client.futuresAccountInfo();
-      logger.info('Binance API connection established', { 
-        accountType: accountInfo.accountType,
-        canTrade: accountInfo.canTrade 
+      // Create Binance client after time synchronization
+      this.client = Binance({
+        apiKey: this.config.apiKey,
+        apiSecret: this.config.secretKey,
+        getTime: () => {
+          const currentTime = Date.now();
+          const correctedTime = currentTime + this.timeOffset;
+          logger.debug('Binance API timestamp', {
+            currentTime,
+            timeOffset: this.timeOffset,
+            correctedTime,
+            finalTimestamp: Math.floor(correctedTime)
+          });
+          return correctedTime;
+        },
       });
+      
+      // Test API connection
+      try {
+        const accountInfo = await this.client.futuresAccountInfo();
+        logger.info('Binance API connection established', { 
+          accountType: accountInfo.accountType,
+          canTrade: accountInfo.canTrade 
+        });
+      } catch (error: any) {
+        if (error.code === -1021) {
+          logger.warn('Binance API timestamp error during initialization, but continuing...', {
+            error: error.message,
+            code: error.code
+          });
+        } else {
+          throw error;
+        }
+      }
 
       // Try to enable HEDGE mode for the entire account (optional)
       try {
@@ -56,10 +82,32 @@ export class BinanceService {
       }
 
       // Then set margin mode to ISOLATED for the specific symbol
-      await this.setMarginMode();
+      try {
+        await this.setMarginMode();
+      } catch (error: any) {
+        if (error.code === -1021) {
+          logger.warn('Binance API timestamp error during margin mode setting, but continuing...', {
+            error: error.message,
+            code: error.code
+          });
+        } else {
+          throw error;
+        }
+      }
       
       // Set leverage for the trading pair
-      await this.setLeverage();
+      try {
+        await this.setLeverage();
+      } catch (error: any) {
+        if (error.code === -1021) {
+          logger.warn('Binance API timestamp error during leverage setting, but continuing...', {
+            error: error.message,
+            code: error.code
+          });
+        } else {
+          throw error;
+        }
+      }
       
       // Start real-time price updates
       this.startRealTimePriceUpdates();
@@ -82,12 +130,18 @@ export class BinanceService {
       const serverTime = serverTimeData.serverTime;
       const localTime = Date.now();
       
+      // Calculate time offset to match server time exactly
       this.timeOffset = serverTime - localTime;
+      
+      // Add a small buffer to account for processing time
+      this.timeOffset += 100; // Add 100ms buffer
       
       logger.info('Time synchronized with Binance servers', {
         serverTime: serverTime,
         localTime: localTime,
-        offset: this.timeOffset
+        offset: this.timeOffset,
+        correctedTime: localTime + this.timeOffset,
+        finalTimestamp: Math.floor((localTime + this.timeOffset))
       });
     } catch (error) {
       logger.warn('Failed to sync time with Binance servers, using local time', error);
@@ -257,6 +311,13 @@ export class BinanceService {
   }
 
   /**
+   * Get service configuration
+   */
+  getConfig(): TradingConfig {
+    return this.config;
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {
@@ -416,6 +477,10 @@ export class BinanceService {
    * Get current positions
    */
   async getCurrentPositions(): Promise<Position[]> {
+    if (!this.client) {
+      throw new Error('Binance client not initialized. Call initialize() first.');
+    }
+    
     try {
       const positions = await this.client.futuresPositionRisk({
         symbol: this.config.tradingPair
@@ -515,6 +580,10 @@ export class BinanceService {
    * Get account balance (with caching for performance)
    */
   async getAccountBalance(): Promise<{ total: number; available: number }> {
+    if (!this.client) {
+      throw new Error('Binance client not initialized. Call initialize() first.');
+    }
+    
     try {
       const now = Date.now();
       
@@ -706,6 +775,10 @@ export class BinanceService {
    * Get all open positions from Binance
    */
   async getOpenPositions(): Promise<Position[]> {
+    if (!this.client) {
+      throw new Error('Binance client not initialized. Call initialize() first.');
+    }
+    
     try {
       const positions = await this.client.futuresPositionRisk({
         symbol: this.config.tradingPair

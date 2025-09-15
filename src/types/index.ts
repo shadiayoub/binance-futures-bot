@@ -80,6 +80,8 @@ export interface TechnicalIndicators {
   volumeSma: number;
   volumeRatio: number;
   trend: 'BULLISH' | 'BEARISH' | 'SIDEWAYS';
+  vwap: number;
+  vwapDistance: number; // Distance from VWAP as percentage
 }
 
 export interface TradingSignal {
@@ -89,6 +91,7 @@ export interface TradingSignal {
   confidence: number;
   reason: string;
   timestamp: Date;
+  symbol?: string; // Optional symbol for distributed hedging
 }
 
 export interface BotState {

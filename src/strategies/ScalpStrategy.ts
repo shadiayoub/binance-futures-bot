@@ -222,7 +222,7 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
    * Check if scalp should be closed
    */
   private shouldCloseScalp(scalpPosition: Position, currentPrice: number, indicators15m: TechnicalIndicators): boolean {
-    const profitThreshold = 0.0027; // Minimum 0.27% profit before considering exit
+    const profitThreshold = parseFloat(process.env.SCALP_TP_PERCENT || '0.5') / 100; // Use environment setting (default 0.5%)
     const scalpProfit = this.calculateProfitPercentage(scalpPosition, currentPrice);
     
     // Only consider profit-taking if we have meaningful profit
@@ -485,9 +485,10 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
    * Check if scalp hedge take profit is hit
    */
   private isScalpHedgeTakeProfitHit(hedgePosition: Position, currentPrice: number): boolean {
-    // Check if hedge has achieved significant profit (e.g., 2%+)
+    // Check if hedge has achieved significant profit using environment setting
     const profitPercentage = this.calculateProfitPercentage(hedgePosition, currentPrice);
-    return profitPercentage >= 2.0; // 2% profit threshold
+    const hedgeProfitThreshold = parseFloat(process.env.SCALP_HEDGE_TP_PERCENT || process.env.SCALP_TP_PERCENT || '0.5');
+    return profitPercentage >= hedgeProfitThreshold; // Use environment setting (default 0.5%)
   }
 
   /**

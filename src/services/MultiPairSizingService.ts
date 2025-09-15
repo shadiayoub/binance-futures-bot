@@ -10,12 +10,33 @@ export interface SizingCalculationResult {
 }
 
 export class MultiPairSizingService {
+  private static instance: MultiPairSizingService;
+  
   private readonly MAX_TOTAL_EXPOSURE = 1.00; // 100% maximum total exposure (2 pairs = 100% is safe)
+  private readonly MAX_PRIMARY_POSITIONS = 2; // Maximum 2 primary positions across all pairs
   private readonly BASE_ANCHOR_SIZE = parseFloat(process.env.BASE_ANCHOR_SIZE || '0.20');   // 20% base anchor size
   private readonly BASE_HEDGE_SIZE = parseFloat(process.env.BASE_HEDGE_SIZE || '0.30');    // 30% base hedge size
   private readonly BASE_OPPORTUNITY_SIZE = parseFloat(process.env.BASE_OPPORTUNITY_SIZE || '0.20'); // 20% base opportunity size
   private readonly BASE_SCALP_SIZE = parseFloat(process.env.BASE_SCALP_SIZE || '0.10');    // 10% base scalp size
   private readonly BASE_SCALP_HEDGE_SIZE = parseFloat(process.env.BASE_SCALP_HEDGE_SIZE || '0.10'); // 10% base scalp hedge size
+  
+  // Cross-pair primary position tracking
+  private primaryPositionCount: number = 0;
+  private primaryPositions: Map<string, { pair: string; type: string; timestamp: number }> = new Map();
+
+  private constructor() {
+    // Private constructor for singleton pattern
+  }
+
+  /**
+   * Get singleton instance
+   */
+  static getInstance(): MultiPairSizingService {
+    if (!MultiPairSizingService.instance) {
+      MultiPairSizingService.instance = new MultiPairSizingService();
+    }
+    return MultiPairSizingService.instance;
+  }
 
   /**
    * Calculate optimal sizing based on number of active pairs
@@ -107,7 +128,122 @@ export class MultiPairSizingService {
   private calculateTotalExposure(positionSizing: PositionSizing, numPairs: number): number {
     // Worst case: all pairs have ANCHOR + HEDGE positions open
     const maxPerPairExposure = positionSizing.anchorPositionSize + positionSizing.anchorHedgeSize;
-    return maxPerPairExposure * numPairs;
+    const totalExposure = maxPerPairExposure * numPairs;
+    
+    // Log the calculation for debugging
+    logger.debug('🔍 Total exposure calculation', {
+      anchorPositionSize: positionSizing.anchorPositionSize,
+      anchorHedgeSize: positionSizing.anchorHedgeSize,
+      maxPerPairExposure: maxPerPairExposure,
+      numPairs: numPairs,
+      totalExposure: totalExposure
+    });
+    
+    return totalExposure;
+  }
+
+  /**
+   * Check if a primary position can be opened (cross-pair limit)
+   */
+  canOpenPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): boolean {
+    const canOpen = this.primaryPositionCount < this.MAX_PRIMARY_POSITIONS;
+    
+    if (!canOpen) {
+      logger.warn('🚫 Cannot open primary position - global limit reached', {
+        pair: pair,
+        positionType: positionType,
+        currentPrimaryPositions: this.primaryPositionCount,
+        maxPrimaryPositions: this.MAX_PRIMARY_POSITIONS,
+        activePrimaryPositions: Array.from(this.primaryPositions.values()),
+        reason: 'Maximum 2 primary positions allowed across all pairs'
+      });
+    } else {
+      logger.info('✅ Primary position allowed - within global limit', {
+        pair: pair,
+        positionType: positionType,
+        currentPrimaryPositions: this.primaryPositionCount,
+        maxPrimaryPositions: this.MAX_PRIMARY_POSITIONS,
+        remainingSlots: this.MAX_PRIMARY_POSITIONS - this.primaryPositionCount
+      });
+    }
+    
+    return canOpen;
+  }
+
+  /**
+   * Register a primary position opening
+   */
+  registerPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP', positionId: string): void {
+    if (this.primaryPositionCount >= this.MAX_PRIMARY_POSITIONS) {
+      logger.error('❌ Attempted to register primary position when limit reached', {
+        pair: pair,
+        positionType: positionType,
+        positionId: positionId,
+        currentCount: this.primaryPositionCount,
+        maxCount: this.MAX_PRIMARY_POSITIONS
+      });
+      return;
+    }
+
+    this.primaryPositions.set(positionId, {
+      pair: pair,
+      type: positionType,
+      timestamp: Date.now()
+    });
+    
+    this.primaryPositionCount++;
+    
+    logger.info('📝 Primary position registered', {
+      pair: pair,
+      positionType: positionType,
+      positionId: positionId,
+      currentPrimaryPositions: this.primaryPositionCount,
+      maxPrimaryPositions: this.MAX_PRIMARY_POSITIONS,
+      activePositions: Array.from(this.primaryPositions.values())
+    });
+  }
+
+  /**
+   * Unregister a primary position closing
+   */
+  unregisterPrimaryPosition(positionId: string): void {
+    const position = this.primaryPositions.get(positionId);
+    if (!position) {
+      logger.warn('⚠️ Attempted to unregister unknown primary position', {
+        positionId: positionId,
+        currentPositions: Array.from(this.primaryPositions.keys())
+      });
+      return;
+    }
+
+    this.primaryPositions.delete(positionId);
+    this.primaryPositionCount--;
+    
+    logger.info('🗑️ Primary position unregistered', {
+      pair: position.pair,
+      positionType: position.type,
+      positionId: positionId,
+      currentPrimaryPositions: this.primaryPositionCount,
+      maxPrimaryPositions: this.MAX_PRIMARY_POSITIONS,
+      remainingSlots: this.MAX_PRIMARY_POSITIONS - this.primaryPositionCount
+    });
+  }
+
+  /**
+   * Get current primary position status
+   */
+  getPrimaryPositionStatus(): {
+    currentCount: number;
+    maxCount: number;
+    remainingSlots: number;
+    activePositions: Array<{ pair: string; type: string; timestamp: number }>;
+  } {
+    return {
+      currentCount: this.primaryPositionCount,
+      maxCount: this.MAX_PRIMARY_POSITIONS,
+      remainingSlots: this.MAX_PRIMARY_POSITIONS - this.primaryPositionCount,
+      activePositions: Array.from(this.primaryPositions.values())
+    };
   }
 
   /**

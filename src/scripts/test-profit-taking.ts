@@ -127,7 +127,9 @@ function simulateProfitTakingLogic(
   indicators: MockIndicators, 
   comprehensiveLevels: ComprehensiveLevels
 ): boolean {
-  const profitThreshold = position.type === 'ANCHOR' ? 0.02 : 0.015;
+  const profitThreshold = position.type === 'ANCHOR' 
+    ? parseFloat(process.env.ANCHOR_TP_PERCENT || '1.0') / 100 
+    : parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.0') / 100;
   const currentProfit = position.side === 'LONG' 
     ? ((currentPrice - position.entryPrice) / position.entryPrice) * 100
     : ((position.entryPrice - currentPrice) / position.entryPrice) * 100;

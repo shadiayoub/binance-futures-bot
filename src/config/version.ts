@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '1.0.2';
+export const BOT_VERSION = '1.9.2';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,
@@ -23,7 +23,25 @@ export const VERSION_INFO = {
     'Multi-Pair Trading Support',
     'Emergency Hedge Leverage',
     'Centralized Environment Management',
-    'Fixed Position Type Determination Logic'
+    'Fixed Position Type Determination Logic',
+    'Fixed Hardcoded Leverage Override Bug',
+    'Hedge Exit Price Calculation System',
+    'Mathematical Hedge Closure Logic',
+    'Leverage-Adjusted Hedge Analysis',
+    'Fee-Aware Hedge Closure Logic',
+    'Corrected Binance Futures Fee Calculations',
+    'Leverage-Adjusted Fee Calculations',
+    'VWAP Integration for Market Sentiment Analysis',
+    'Liquidity Zone Calculation for Zone-Based Hedging',
+    'Buffer Zone Implementation for Strategic Hedge Placement',
+    'VWAP Zone Activation Logic for Buffer Zone Signals',
+    'Hedge Leverage Multiplier (Primary × 2) for Faster Profit Growth',
+    'Single VWAP Signal Confirmation for Hedge Entry',
+    'Distributed Hedging Strategy with Secondary API Key for Anti-Detection',
+    'Conditional Scalp Activation Based on High-Volume Conditions',
+    'Corrected Exit Logic - Primary TP Exits + Hedge System Risk Management',
+    'Cross-Pair Primary Position Limiting System (Max 2 Primary Positions)',
+    'Single API Key Mode for Simplified Hedge Management'
   ],
   strategies: [
     'Anchor Strategy (Bidirectional)',

@@ -9,6 +9,8 @@ import { BinanceService } from './BinanceService';
 import { DynamicLevels } from './DynamicLevels';
 import { HedgeMonitor, HedgeAttempt } from './HedgeMonitor';
 import { HedgeGuaranteeCalculator, HedgeGuaranteeConfig } from './HedgeGuaranteeCalculator';
+import { DistributedHedgeService, HedgeApiConfig } from './DistributedHedgeService';
+import { MultiPairSizingService } from './MultiPairSizingService';
 import { logger } from '../utils/logger';
 
 export class PositionManager {
@@ -20,6 +22,8 @@ export class PositionManager {
   private dynamicLevels: DynamicLevels;
   private hedgeMonitor: HedgeMonitor;
   private guaranteeCalculator: HedgeGuaranteeCalculator;
+  private distributedHedgeService: DistributedHedgeService;
+  private multiPairSizingService: MultiPairSizingService;
 
   constructor(
     binanceService: BinanceService,
@@ -31,6 +35,7 @@ export class PositionManager {
     this.leverageSettings = leverageSettings;
     this.dynamicLevels = new DynamicLevels();
     this.hedgeMonitor = new HedgeMonitor(binanceService);
+    this.multiPairSizingService = MultiPairSizingService.getInstance();
     
     // Initialize hedge guarantee calculator with leverage-preferring settings
     const guaranteeConfig: HedgeGuaranteeConfig = {
@@ -43,6 +48,15 @@ export class PositionManager {
       preferLeverageAdjustment: true // Prefer leverage adjustment over size adjustment
     };
     this.guaranteeCalculator = new HedgeGuaranteeCalculator(guaranteeConfig);
+    
+    // Initialize distributed hedge service
+    const hedgeApiConfig: HedgeApiConfig | undefined = process.env.HEDGE_API_KEY && process.env.HEDGE_SECRET_KEY ? {
+      apiKey: process.env.HEDGE_API_KEY,
+      secretKey: process.env.HEDGE_SECRET_KEY,
+      testnet: process.env.BINANCE_TESTNET === 'true'
+    } : undefined;
+    
+    this.distributedHedgeService = new DistributedHedgeService(binanceService, hedgeApiConfig);
     
     this.botState = {
       isRunning: false,
@@ -91,6 +105,17 @@ export class PositionManager {
    */
   private async openAnchorPosition(signal: TradingSignal): Promise<Position | null> {
     try {
+      // Check cross-pair primary position limit first
+      const pair = this.binanceService.getConfig().tradingPair;
+      if (!this.multiPairSizingService.canOpenPrimaryPosition(pair, 'ANCHOR')) {
+        logger.warn('Cannot open ANCHOR position - cross-pair limit reached', {
+          pair: pair,
+          positionType: 'ANCHOR',
+          reason: 'Maximum 2 primary positions allowed across all pairs'
+        });
+        return null;
+      }
+
       // Check if we already have an ANCHOR position
       if (!this.canOpenPosition('ANCHOR')) {
         logger.warn('Cannot open ANCHOR position - already exists', {
@@ -99,19 +124,25 @@ export class PositionManager {
         return null;
       }
 
-      const position = await this.binanceService.openPosition(
-        signal.position,
-        this.positionSizing.anchorPositionSize,
-        this.leverageSettings.anchorLeverage
+      // Use distributed hedge service for primary positions
+      const position = await this.distributedHedgeService.openPrimaryPosition(
+        signal,
+        this.positionSizing,
+        this.leverageSettings
       );
 
-      position.type = 'ANCHOR';
-      this.currentPositions.push(position);
-      
-      // Set static take profit for ANCHOR position
-      await this.setStaticTakeProfit(position);
-      
-      logger.info('Anchor position opened', position);
+      if (position) {
+        position.type = 'ANCHOR';
+        this.currentPositions.push(position);
+        
+        // Register primary position in cross-pair system
+        this.multiPairSizingService.registerPrimaryPosition(pair, 'ANCHOR', position.id);
+        
+        // Set static take profit for ANCHOR position
+        await this.setStaticTakeProfit(position);
+        
+        logger.info('Anchor position opened', position);
+      }
       return position;
     } catch (error) {
       logger.error('Failed to open anchor position', error);
@@ -124,6 +155,17 @@ export class PositionManager {
    */
   private async openScalpPosition(signal: TradingSignal): Promise<Position | null> {
     try {
+      // Check cross-pair primary position limit first
+      const pair = this.binanceService.getConfig().tradingPair;
+      if (!this.multiPairSizingService.canOpenPrimaryPosition(pair, 'SCALP')) {
+        logger.warn('Cannot open SCALP position - cross-pair limit reached', {
+          pair: pair,
+          positionType: 'SCALP',
+          reason: 'Maximum 2 primary positions allowed across all pairs'
+        });
+        return null;
+      }
+
       // Check if we already have a SCALP position
       if (!this.canOpenPosition('SCALP')) {
         logger.warn('Cannot open SCALP position - already exists', {
@@ -140,6 +182,9 @@ export class PositionManager {
 
       position.type = 'SCALP';
       this.currentPositions.push(position);
+      
+      // Register primary position in cross-pair system
+      this.multiPairSizingService.registerPrimaryPosition(pair, 'SCALP', position.id);
       
       // Set static take profit for SCALP position
       await this.setStaticTakeProfit(position);
@@ -172,10 +217,34 @@ export class PositionManager {
         positionSize = this.positionSizing.anchorHedgeSize; // 30%
         // Use emergency leverage for emergency hedges (detected by reason containing "CRITICAL" or "emergency")
         const isEmergencyHedge = signal.reason?.toLowerCase().includes('critical') || signal.reason?.toLowerCase().includes('emergency');
-        leverage = isEmergencyHedge 
+        
+        // Calculate 2x leverage multiplier for faster profit growth
+        const primaryLeverage = this.leverageSettings.anchorLeverage; // Primary position leverage
+        const baseHedgeLeverage = isEmergencyHedge 
           ? this.leverageSettings.emergencyHedgeLeverage 
           : this.leverageSettings.hedgeLeverage;
+        
+        // Apply 2x leverage multiplier (primary × 2) for faster profit growth
+        const leverageMultiplier = 2.0;
+        const calculatedLeverage = primaryLeverage * leverageMultiplier;
+        
+        // Use the higher of calculated leverage or base hedge leverage, but cap at emergency leverage
+        leverage = Math.min(
+          Math.max(calculatedLeverage, baseHedgeLeverage),
+          this.leverageSettings.emergencyHedgeLeverage
+        );
+        
         positionType = 'ANCHOR_HEDGE';
+        
+        logger.info('🚀 Hedge Leverage Multiplier Applied', {
+          primaryLeverage,
+          baseHedgeLeverage,
+          leverageMultiplier,
+          calculatedLeverage: calculatedLeverage.toFixed(1),
+          finalLeverage: leverage,
+          isEmergencyHedge,
+          reason: signal.reason
+        });
         
         if (isEmergencyHedge) {
           logger.warn('🚨 Using emergency hedge leverage for ANCHOR hedge', {
@@ -192,11 +261,35 @@ export class PositionManager {
         }
       } else if (hasOpportunityPosition && !this.currentPositions.some(pos => pos.type === 'OPPORTUNITY_HEDGE' && pos.status === 'OPEN')) {
         positionSize = this.positionSizing.opportunityHedgeSize; // 30%
-        // Use emergency leverage for emergency hedges (detected by reason containing "CRITICAL" or "emergency")
-        leverage = signal.reason?.toLowerCase().includes('critical') || signal.reason?.toLowerCase().includes('emergency') 
+        
+        // Calculate 2x leverage multiplier for faster profit growth
+        const primaryLeverage = this.leverageSettings.opportunityLeverage; // Primary position leverage
+        const isEmergencyHedge = signal.reason?.toLowerCase().includes('critical') || signal.reason?.toLowerCase().includes('emergency');
+        const baseHedgeLeverage = isEmergencyHedge 
           ? this.leverageSettings.emergencyHedgeLeverage 
           : this.leverageSettings.hedgeLeverage;
+        
+        // Apply 2x leverage multiplier (primary × 2) for faster profit growth
+        const leverageMultiplier = 2.0;
+        const calculatedLeverage = primaryLeverage * leverageMultiplier;
+        
+        // Use the higher of calculated leverage or base hedge leverage, but cap at emergency leverage
+        leverage = Math.min(
+          Math.max(calculatedLeverage, baseHedgeLeverage),
+          this.leverageSettings.emergencyHedgeLeverage
+        );
+        
         positionType = 'OPPORTUNITY_HEDGE';
+        
+        logger.info('🚀 Opportunity Hedge Leverage Multiplier Applied', {
+          primaryLeverage,
+          baseHedgeLeverage,
+          leverageMultiplier,
+          calculatedLeverage: calculatedLeverage.toFixed(1),
+          finalLeverage: leverage,
+          isEmergencyHedge,
+          reason: signal.reason
+        });
         
         // Calculate take profit at opportunity liquidation price
         const opportunityPosition = this.currentPositions.find(pos => pos.type === 'OPPORTUNITY' && pos.status === 'OPEN');
@@ -205,11 +298,35 @@ export class PositionManager {
         }
       } else if (hasScalpPosition && !this.currentPositions.some(pos => pos.type === 'SCALP_HEDGE' && pos.status === 'OPEN')) {
         positionSize = this.positionSizing.scalpHedgeSize; // 10%
-        // Use emergency leverage for emergency hedges (detected by reason containing "CRITICAL" or "emergency")
-        leverage = signal.reason?.toLowerCase().includes('critical') || signal.reason?.toLowerCase().includes('emergency') 
+        
+        // Calculate 2x leverage multiplier for faster profit growth
+        const primaryLeverage = this.leverageSettings.scalpLeverage; // Primary position leverage
+        const isEmergencyHedge = signal.reason?.toLowerCase().includes('critical') || signal.reason?.toLowerCase().includes('emergency');
+        const baseHedgeLeverage = isEmergencyHedge 
           ? this.leverageSettings.emergencyHedgeLeverage 
           : this.leverageSettings.scalpHedgeLeverage;
+        
+        // Apply 2x leverage multiplier (primary × 2) for faster profit growth
+        const leverageMultiplier = 2.0;
+        const calculatedLeverage = primaryLeverage * leverageMultiplier;
+        
+        // Use the higher of calculated leverage or base hedge leverage, but cap at emergency leverage
+        leverage = Math.min(
+          Math.max(calculatedLeverage, baseHedgeLeverage),
+          this.leverageSettings.emergencyHedgeLeverage
+        );
+        
         positionType = 'SCALP_HEDGE';
+        
+        logger.info('🚀 Scalp Hedge Leverage Multiplier Applied', {
+          primaryLeverage,
+          baseHedgeLeverage,
+          leverageMultiplier,
+          calculatedLeverage: calculatedLeverage.toFixed(1),
+          finalLeverage: leverage,
+          isEmergencyHedge,
+          reason: signal.reason
+        });
         
         // Calculate take profit at scalp liquidation price
         const scalpPosition = this.currentPositions.find(pos => pos.type === 'SCALP' && pos.status === 'OPEN');
@@ -267,36 +384,39 @@ export class PositionManager {
         }
       }
 
-      const position = await this.binanceService.openPosition(
-        signal.position,
-        positionSize,
-        leverage
+      // Use distributed hedge service for hedge positions
+      const position = await this.distributedHedgeService.openHedgePosition(
+        signal,
+        this.positionSizing,
+        this.leverageSettings
       );
 
-      position.type = positionType;
-      this.currentPositions.push(position);
-      
-      // Set take profit order if we have a liquidation price
-      if (takeProfitPrice) {
-        await this.setHedgeTakeProfit(position, takeProfitPrice);
-      }
+      if (position) {
+        position.type = positionType;
+        this.currentPositions.push(position);
+        
+        // Set take profit order if we have a liquidation price
+        if (takeProfitPrice) {
+          await this.setHedgeTakeProfit(position, takeProfitPrice);
+        }
 
-      // Record successful hedge opening
-      const primaryPosition = this.currentPositions.find(pos => 
-        (positionType === 'ANCHOR_HEDGE' && pos.type === 'ANCHOR') ||
-        (positionType === 'OPPORTUNITY_HEDGE' && pos.type === 'OPPORTUNITY') ||
-        (positionType === 'SCALP_HEDGE' && pos.type === 'SCALP')
-      );
-      
-      if (primaryPosition) {
-        this.hedgeMonitor.recordHedgeAttempt(primaryPosition, signal, true);
+        // Record successful hedge opening
+        const primaryPosition = this.currentPositions.find(pos => 
+          (positionType === 'ANCHOR_HEDGE' && pos.type === 'ANCHOR') ||
+          (positionType === 'OPPORTUNITY_HEDGE' && pos.type === 'OPPORTUNITY') ||
+          (positionType === 'SCALP_HEDGE' && pos.type === 'SCALP')
+        );
+        
+        if (primaryPosition) {
+          this.hedgeMonitor.recordHedgeAttempt(primaryPosition, signal, true);
+        }
+        
+        logger.info('Hedge position opened', { 
+          position, 
+          takeProfitPrice,
+          reason: `Hedge take profit set at ${positionType === 'ANCHOR_HEDGE' ? 'anchor' : 'opportunity'} liquidation price`
+        });
       }
-      
-      logger.info('Hedge position opened', { 
-        position, 
-        takeProfitPrice,
-        reason: `Hedge take profit set at ${positionType === 'ANCHOR_HEDGE' ? 'anchor' : 'opportunity'} liquidation price`
-      });
       return position;
     } catch (error) {
       logger.error('Failed to open hedge position', error);
@@ -321,6 +441,17 @@ export class PositionManager {
    */
   private async openOpportunityPosition(signal: TradingSignal): Promise<Position | null> {
     try {
+      // Check cross-pair primary position limit first
+      const pair = this.binanceService.getConfig().tradingPair;
+      if (!this.multiPairSizingService.canOpenPrimaryPosition(pair, 'OPPORTUNITY')) {
+        logger.warn('Cannot open OPPORTUNITY position - cross-pair limit reached', {
+          pair: pair,
+          positionType: 'OPPORTUNITY',
+          reason: 'Maximum 2 primary positions allowed across all pairs'
+        });
+        return null;
+      }
+
       const position = await this.binanceService.openPosition(
         signal.position,
         this.positionSizing.opportunityPositionSize,
@@ -329,6 +460,9 @@ export class PositionManager {
 
       position.type = 'OPPORTUNITY';
       this.currentPositions.push(position);
+      
+      // Register primary position in cross-pair system
+      this.multiPairSizingService.registerPrimaryPosition(pair, 'OPPORTUNITY', position.id);
       
       // Set static take profit for OPPORTUNITY position
       await this.setStaticTakeProfit(position);
@@ -396,6 +530,11 @@ export class PositionManager {
       await this.binanceService.closePosition(positionToClose);
       positionToClose.status = 'CLOSED';
       
+      // Unregister primary position from cross-pair system if it's a primary position
+      if (['ANCHOR', 'OPPORTUNITY', 'SCALP'].includes(positionToClose.type)) {
+        this.multiPairSizingService.unregisterPrimaryPosition(positionToClose.id);
+      }
+      
       logger.info('✅ Position closed successfully', {
         position: {
           id: positionToClose.id,
@@ -446,7 +585,8 @@ export class PositionManager {
    */
   async updatePositions(): Promise<void> {
     try {
-      const binancePositions = await this.binanceService.getCurrentPositions();
+      // Use distributed hedge service to get all positions from both API keys
+      const binancePositions = await this.distributedHedgeService.getAllPositions();
       
       // Update current positions with Binance data
       for (const binancePos of binancePositions) {
@@ -644,25 +784,29 @@ export class PositionManager {
         if (position.side === 'LONG') {
           // LONG scalp: Take profit at nearest resistance
           const nearestResistance = signals.nearestResistance;
-          takeProfitPrice = nearestResistance ? nearestResistance.price : currentPrice * 1.005; // 0.5% default
+          const scalpTpPercent = parseFloat(process.env.SCALP_TP_PERCENT || '0.5') / 100;
+          takeProfitPrice = nearestResistance ? nearestResistance.price : currentPrice * (1 + scalpTpPercent); // Use environment setting
         } else {
           // SHORT scalp: Take profit at nearest support
           const nearestSupport = signals.nearestSupport;
-          takeProfitPrice = nearestSupport ? nearestSupport.price : currentPrice * 0.995; // 0.5% default
+          const scalpTpPercent = parseFloat(process.env.SCALP_TP_PERCENT || '0.5') / 100;
+          takeProfitPrice = nearestSupport ? nearestSupport.price : currentPrice * (1 - scalpTpPercent); // Use environment setting
         }
       } else if (position.type === 'ANCHOR') {
-        // For ANCHOR: Use higher profit targets
+        // For ANCHOR: Use environment profit targets
+        const anchorTpPercent = parseFloat(process.env.ANCHOR_TP_PERCENT || '1.0') / 100;
         if (position.side === 'LONG') {
-          takeProfitPrice = currentPrice * 1.02; // 2% profit target
+          takeProfitPrice = currentPrice * (1 + anchorTpPercent); // Use environment setting
         } else {
-          takeProfitPrice = currentPrice * 0.98; // 2% profit target
+          takeProfitPrice = currentPrice * (1 - anchorTpPercent); // Use environment setting
         }
       } else if (position.type === 'OPPORTUNITY') {
-        // For OPPORTUNITY: Use medium profit targets
+        // For OPPORTUNITY: Use environment profit targets
+        const opportunityTpPercent = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.0') / 100;
         if (position.side === 'LONG') {
-          takeProfitPrice = currentPrice * 1.015; // 1.5% profit target
+          takeProfitPrice = currentPrice * (1 + opportunityTpPercent); // Use environment setting
         } else {
-          takeProfitPrice = currentPrice * 0.985; // 1.5% profit target
+          takeProfitPrice = currentPrice * (1 - opportunityTpPercent); // Use environment setting
         }
       } else {
         // Default fallback
@@ -702,14 +846,15 @@ export class PositionManager {
   }> {
     // This is a simplified version - in reality, this should use the ComprehensiveLevels service
     // For now, return basic levels based on current price
+    const scalpTpPercent = parseFloat(process.env.SCALP_TP_PERCENT || '0.5') / 100;
     return {
       nearestResistance: {
-        price: currentPrice * 1.005,
+        price: currentPrice * (1 + scalpTpPercent),
         description: 'Static TP Level',
         importance: 'MEDIUM'
       },
       nearestSupport: {
-        price: currentPrice * 0.995,
+        price: currentPrice * (1 - scalpTpPercent),
         description: 'Static TP Level',
         importance: 'MEDIUM'
       }

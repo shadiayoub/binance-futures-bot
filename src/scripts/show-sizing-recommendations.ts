@@ -12,7 +12,7 @@ async function showSizingRecommendations() {
   try {
     console.log('🎯 Multi-Pair Sizing Recommendations\n');
     
-    const sizingService = new MultiPairSizingService();
+    const sizingService = MultiPairSizingService.getInstance();
     const recommendations = sizingService.getSizingRecommendations();
     
     // Show recommendations for different pair counts

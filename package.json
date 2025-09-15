@@ -1,6 +1,6 @@
 {
   "name": "ada-futures-bot",
-  "version": "1.0.2",
+  "version": "1.9.2",
   "description": "ADA Futures Trading Bot with 4-Position Hedge System",
   "main": "dist/index.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "manage-pairs": "ts-node src/scripts/manage-pairs.ts",
     "multi-pair": "ts-node src/multi-pair-index.ts",
     "show-sizing": "ts-node src/scripts/show-sizing-recommendations.ts",
+    "test-cross-pair": "ts-node src/scripts/test-cross-pair-limiting.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "install:pnpm": "pnpm install",

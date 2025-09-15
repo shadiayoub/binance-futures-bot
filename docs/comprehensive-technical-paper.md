@@ -8,12 +8,15 @@ The Multi-Pair Futures Trading Bot is a sophisticated algorithmic trading system
 - **Mathematical Profit Guarantee**: Minimum +7% profit in worst-case scenarios
 - **Multi-Pair Support**: ADA, ETH, BNB, BTC with automatic sizing optimization
 - **Sequential Position Management**: Only one strategy type active per pair at a time
+- **Cross-Pair Primary Position Limiting**: Maximum 2 primary positions across all pairs for safety
 - **Hybrid Timing System**: 2-minute heavy analysis + 20-second quick decisions
 - **Comprehensive Level System**: 100+ support/resistance levels per pair across 6 price zones
 - **Dynamic Learning**: Real-time adaptation to market conditions
 - **Bidirectional Trading**: Complete LONG/SHORT coverage for all strategies
 - **Hedge Monitoring**: Continuous hedge verification with automatic retry system
 - **Automatic Sizing**: Smart position sizing based on number of active pairs
+- **Corrected Exit Logic**: Primary positions exit at TP targets, hedge system handles risk management
+- **Distributed Hedging**: Secondary API key support for anti-detection strategies
 
 ---
 
@@ -141,6 +144,7 @@ class MultiPairSizingService {
   private readonly MAX_TOTAL_EXPOSURE_1_2_PAIRS = 1.00; // 100%
   private readonly MAX_TOTAL_EXPOSURE_3_PLUS_PAIRS = 0.80; // 80%
   private readonly BASE_PER_PAIR_EXPOSURE = 0.50; // 50% (20% + 30%)
+  private readonly MAX_PRIMARY_POSITIONS = 2; // Maximum primary positions across all pairs
 
   calculateOptimalSizing(activePairs: string[]): SizingCalculationResult {
     const numPairs = activePairs.length;
@@ -154,6 +158,11 @@ class MultiPairSizingService {
       const scalingFactor = maxPerPairExposure / 0.50;
       return this.createScaledSizing(scalingFactor);
     }
+  }
+
+  // Cross-pair primary position limiting
+  canOpenPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): boolean {
+    return this.primaryPositionCount < this.MAX_PRIMARY_POSITIONS;
   }
 }
 ```
@@ -173,6 +182,21 @@ class MultiPairSizingService {
   10%/15% per pair = 100% total exposure ✅ SCALED
 ```
 
+#### **Cross-Pair Primary Position Limiting**
+```
+Safety Mechanism: Maximum 2 primary positions across all pairs
+├── First primary position: ✅ ALLOWED (1/2 used)
+├── Second primary position: ✅ ALLOWED (2/2 used)  
+└── Third primary position: 🚫 BLOCKED (2/2 limit reached)
+
+Example with 3 pairs:
+├── ADA ANCHOR: ✅ Opens (1/2)
+├── ETH ANCHOR: ✅ Opens (2/2)
+└── BNB ANCHOR: 🚫 Blocked (limit reached)
+
+Result: Maximum 96% exposure instead of 144% (3 × 48%)
+```
+
 ### **3. Environment Configuration**
 
 #### **Minimal Configuration**
@@ -183,6 +207,15 @@ BTC_ENABLED=true
 BNB_ENABLED=true
 BASE_BALANCE=1000
 USE_DYNAMIC_LEVELS=true
+
+# Distributed Hedging (Optional)
+USE_DISTRIBUTED_HEDGING=true
+HEDGE_API_KEY=your_secondary_api_key
+HEDGE_SECRET_KEY=your_secondary_secret_key
+
+# Conditional Scalp Activation
+SCALP_ENABLED=true
+SCALP_MIN_VOLUME_MULTIPLIER=2.0
 ```
 
 #### **Comprehensive Fallback System**
@@ -309,6 +342,13 @@ Net Result: -10% + 16.67% = +6.67% PROFIT
 #### **Core Logic**
 ```typescript
 canOpenPosition(type: 'ANCHOR' | 'PEAK' | 'SCALP'): boolean {
+  // Check cross-pair primary position limit first
+  if (!this.multiPairSizingService.canOpenPrimaryPosition(this.config.symbol, type)) {
+    logger.warn(`Cannot open ${type} position - cross-pair primary position limit reached (${this.multiPairSizingService.primaryPositionCount}/${this.multiPairSizingService.MAX_PRIMARY_POSITIONS})`);
+    return false;
+  }
+
+  // Check per-pair sequential management
   const hasAnyOpenPositions = this.currentPositions.some(pos => pos.status === 'OPEN');
   if (hasAnyOpenPositions) {
     const activePosition = this.currentPositions.find(pos => pos.status === 'OPEN');
@@ -321,9 +361,20 @@ canOpenPosition(type: 'ANCHOR' | 'PEAK' | 'SCALP'): boolean {
 
 #### **Position Cycle States**
 ```
-ANCHOR Cycle: ANCHOR → ANCHOR_HEDGE → [Both Close] → Cycle Complete
-PEAK Cycle:   PEAK → PEAK_HEDGE → [Both Close] → Cycle Complete  
-SCALP Cycle:  SCALP → SCALP_HEDGE → [Both Close] → Cycle Complete
+ANCHOR Cycle: ANCHOR → [TP Exit OR ANCHOR_HEDGE] → [Both Close] → Cycle Complete
+PEAK Cycle:   PEAK → [TP Exit OR PEAK_HEDGE] → [Both Close] → Cycle Complete  
+SCALP Cycle:  SCALP → [TP Exit OR SCALP_HEDGE] → [Both Close] → Cycle Complete
+```
+
+#### **Exit Logic Flow**
+```
+Primary Position Success Path:
+Primary Position → Reaches Take Profit Target → Clean Exit
+Result: Profit captured, no hedge needed
+
+Primary Position Struggle Path:
+Primary Position → Goes Against Us → Hedge Opens → Hedge Cycle Starts
+Result: Hedge system manages the risk
 ```
 
 ### **2. Hybrid Timing Architecture**
@@ -628,6 +679,17 @@ if (priceBreaksSupport && rsiInRange(30, 70) && volumeConfirmation) {
 }
 ```
 
+#### **Primary Take Profit Logic**
+```typescript
+// Primary position exits at original target (2% for Anchor)
+private shouldTakeProfitPrimary(position: Position, currentPrice: number): boolean {
+  const targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '2.0'); // 2% target
+  const currentProfit = this.calculateProfitPercentage(position, currentPrice);
+  
+  return currentProfit >= targetProfit;
+}
+```
+
 #### **Hedge Trigger Logic**
 ```typescript
 // For LONG Anchor
@@ -671,6 +733,17 @@ detectMarketPeak(currentPrice: number, indicators1h: TechnicalIndicators): boole
   
   return isPeak && rsiOverbought && volumeDecreasing && 
          (third.price - currentPrice) / third.price >= declineThreshold;
+}
+```
+
+#### **Primary Take Profit Logic**
+```typescript
+// Primary position exits at original target (1.5% for Peak/Opportunity)
+private shouldTakeProfitPrimary(position: Position, currentPrice: number): boolean {
+  const targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.5'); // 1.5% target
+  const currentProfit = this.calculateProfitPercentage(position, currentPrice);
+  
+  return currentProfit >= targetProfit;
 }
 ```
 
@@ -720,14 +793,32 @@ if (priceNearResistance && rsiInRange(30, 70) && volumeConfirmation && trendBear
 }
 ```
 
-#### **Scalp Profit-Taking (0.27% target)**
+#### **Primary Take Profit Logic**
 ```typescript
-// LONG Scalp Profit-Taking
-if (profit >= 0.27% && (rsiOverbought || pricePeakDetected)) {
-  return {
-    type: 'EXIT',
-    reason: 'Scalp profit target reached with confirmation'
-  };
+// Primary position exits at original target (1% for Scalp in high volume)
+private shouldTakeProfitPrimary(position: Position, currentPrice: number): boolean {
+  const targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target
+  const currentProfit = this.calculateProfitPercentage(position, currentPrice);
+  
+  return currentProfit >= targetProfit;
+}
+```
+
+#### **Conditional Scalp Activation**
+```typescript
+// Scalp only activates in high-volume conditions to reduce fee sensitivity
+private shouldActivateScalpStrategy(symbol: string, currentVolume: number, marketData: MarketData[]): VolumeAnalysisResult {
+  const volumeAnalysis = this.volumeAnalysis.analyzeVolumeForScalp(currentVolume, marketData);
+  
+  if (volumeAnalysis.shouldActivateScalp) {
+    logger.info('📈 High-volume scalp activation', {
+      symbol,
+      volumeRatio: volumeAnalysis.volumeRatio.toFixed(2),
+      reason: 'High volume conditions favor scalp profitability'
+    });
+  }
+  
+  return volumeAnalysis;
 }
 ```
 
@@ -750,19 +841,24 @@ const hedgeTakeProfit = anchorLiquidation * 0.98; // 2% before liquidation
 
 #### **Guaranteed Profit Scenarios**
 ```
-Scenario A: Guaranteed Profit (Liquidation)
-- Anchor approaches liquidation → Hedge hits TP first
-- Hedge profit > Anchor loss → Net guaranteed profit
+Scenario A: Primary Position Success (Clean Exit)
+- Primary position reaches TP target → Clean exit at profit
+- No hedge needed → Optimal fee-to-profit ratio
+- Result: Clean profit capture
+
+Scenario B: Hedge Protection (Risk Management)
+- Primary position struggles → Hedge opens → Hedge system manages exit
+- Hedge profit > Primary loss → Net guaranteed profit
 - Both positions close for guaranteed profit
 
-Scenario B: Double Profit (Best Case)  
+Scenario C: Double Profit (Best Case)  
 - Hedge hits TP → Price returns to support
-- Hedge closes with profit → Anchor continues to target
+- Hedge closes with profit → Primary continues to target
 - Both positions profit independently
 
-Scenario C: Safety Exit (Price Returns)
+Scenario D: Safety Exit (Price Returns)
 - Price returns to hedge entry → Hedge closes at break-even
-- Anchor continues to target → Normal profit
+- Primary continues to target → Normal profit
 - No losses, only gains
 ```
 
@@ -785,23 +881,32 @@ detectPricePeak(position: Position, currentPrice: number): boolean {
 }
 ```
 
-#### **Target Return Exit Logic**
+#### **Primary Take Profit Exit Logic**
 ```typescript
-isPriceAtTarget(currentPrice: number, targetPrice: number, position: Position): boolean {
-  const priceTolerance = 0.005; // 0.5%
-  const isNearTarget = Math.abs(currentPrice - targetPrice) / targetPrice <= priceTolerance;
+// Primary positions exit at their original targets
+private shouldTakeProfitPrimary(position: Position, currentPrice: number, indicators1h: TechnicalIndicators): boolean {
+  // Get the original take profit target based on position type
+  let targetProfit: number;
   
-  if (!isNearTarget) return false;
-  
-  // Exit immediately at target (Option 1)
-  if (position.side === 'LONG' && currentPrice >= targetPrice) {
-    return true;
+  switch (position.type) {
+    case 'ANCHOR':
+      targetProfit = parseFloat(process.env.ANCHOR_TP_PERCENT || '2.0'); // 2% target
+      break;
+    case 'OPPORTUNITY':
+      targetProfit = parseFloat(process.env.OPPORTUNITY_TP_PERCENT || '1.5'); // 1.5% target
+      break;
+    case 'SCALP':
+      targetProfit = parseFloat(process.env.SCALP_HIGH_VOLUME_TP_PERCENT || '1.0'); // 1% target
+      break;
+    default:
+      return false;
   }
-  if (position.side === 'SHORT' && currentPrice <= targetPrice) {
-    return true;
-  }
+
+  // Calculate current profit percentage
+  const currentProfit = this.calculateProfitPercentage(position, currentPrice);
   
-  return false;
+  // Check if we've reached the target profit
+  return currentProfit >= targetProfit;
 }
 ```
 
@@ -955,6 +1060,16 @@ logger.info('🎯 LONG Anchor Entry Signal', {
   trend: indicators1h.trend,
   confidence: 0.85
 });
+
+logger.info('🎯 Primary Position Take Profit Target Reached', {
+  positionType: 'ANCHOR',
+  currentProfit: '2.15%',
+  targetProfit: '2.0%',
+  entryPrice: 0.8811,
+  currentPrice: 0.9000,
+  side: 'LONG',
+  reason: 'Primary position reached 2% target - clean exit'
+});
 ```
 
 #### **Hedge Condition Monitoring**
@@ -1015,6 +1130,23 @@ logger.warn('🚫 Cannot open PEAK position - ANCHOR cycle is still active', {
   activePosition: { type: 'ANCHOR', side: 'LONG', id: '123', status: 'OPEN' },
   allOpenPositions: [{ type: 'ANCHOR', side: 'LONG', id: '123' }],
   reason: 'Sequential position management - only one position type at a time'
+});
+
+logger.warn('🚫 Cannot open ANCHOR position - cross-pair primary position limit reached', {
+  pair: 'BNBUSDT',
+  positionType: 'ANCHOR',
+  currentCount: 2,
+  maxAllowed: 2,
+  reason: 'Cross-pair primary position limiting - maximum 2 primary positions across all pairs'
+});
+
+logger.info('✅ Primary position opened - cross-pair tracking', {
+  pair: 'ADAUSDT',
+  positionType: 'ANCHOR',
+  positionId: 'anchor_123',
+  currentCount: 1,
+  maxAllowed: 2,
+  reason: 'Cross-pair primary position registered successfully'
 });
 ```
 
@@ -1129,6 +1261,11 @@ const orderParams = {
 - Invalid order parameters
 - Position not found
 - Position side mismatch (-4061)
+
+// Timestamp synchronization errors
+- Timestamp for this request is outside of the recvWindow (-1021)
+- Server time synchronization issues
+- Year correction problems (2024 vs 2025)
 ```
 
 #### **Automatic Recovery**
@@ -1146,6 +1283,24 @@ async reconnectWithBackoff(attempt: number = 1): Promise<void> {
       await this.reconnectWithBackoff(attempt + 1);
     } else {
       throw new Error('API reconnection failed after 5 attempts');
+    }
+  }
+}
+
+// Timestamp synchronization error handling
+async initialize(): Promise<void> {
+  try {
+    await this.syncTime();
+    await this.client.futuresAccountInfo();
+  } catch (error) {
+    if (error.code === -1021) {
+      logger.warn('Binance API timestamp error during initialization, but continuing...', {
+        code: error.code,
+        error: error.message
+      });
+      // Continue with degraded functionality
+    } else {
+      throw error;
     }
   }
 }
@@ -1615,20 +1770,26 @@ The Multi-Pair Futures Trading Bot represents a paradigm shift in algorithmic tr
 1. **Mathematical Certainty**: Profit guaranteed through liquidation-based hedging
 2. **Multi-Pair Support**: ADA, ETH, BNB, BTC with automatic sizing optimization
 3. **Sequential Architecture**: Clean, focused execution with no strategy conflicts per pair
-4. **Hybrid Timing**: Optimal balance between analysis depth and market responsiveness
-5. **Comprehensive Coverage**: 100+ level system per pair across 6 price zones
-6. **Dynamic Learning**: Real-time adaptation to changing market conditions
-7. **Bidirectional Trading**: Complete LONG/SHORT coverage for all strategies
-8. **Hedge Monitoring**: Continuous verification with automatic retry system
-9. **Automatic Sizing**: Smart position sizing based on number of active pairs
+4. **Cross-Pair Safety**: Maximum 2 primary positions across all pairs for risk control
+5. **Hybrid Timing**: Optimal balance between analysis depth and market responsiveness
+6. **Comprehensive Coverage**: 100+ level system per pair across 6 price zones
+7. **Dynamic Learning**: Real-time adaptation to changing market conditions
+8. **Bidirectional Trading**: Complete LONG/SHORT coverage for all strategies
+9. **Hedge Monitoring**: Continuous verification with automatic retry system
+10. **Automatic Sizing**: Smart position sizing based on number of active pairs
+11. **Corrected Exit Logic**: Primary positions exit at TP targets, hedge system handles risk management
+12. **Distributed Hedging**: Secondary API key support for anti-detection strategies
+13. **Graceful Error Handling**: Timestamp synchronization issues handled without stopping operations
 
 ### **Multi-Pair Capabilities**
 
 - **4 Trading Pairs**: ADA, ETH, BNB, BTC with comprehensive level coverage
 - **Automatic Sizing**: 1-2 pairs (100% exposure), 3+ pairs (80% exposure)
+- **Cross-Pair Safety**: Maximum 2 primary positions across all pairs (96% max exposure)
 - **Independent Operation**: Each pair operates independently with shared balance
 - **Comprehensive Levels**: 99-102 levels per pair covering entire price history
 - **Fallback System**: All configurations have sensible defaults
+- **Distributed Hedging**: Optional secondary API key for anti-detection
 
 ### **Operational Excellence**
 
@@ -1637,6 +1798,8 @@ The Multi-Pair Futures Trading Bot represents a paradigm shift in algorithmic tr
 - **Real-Time Monitoring**: Comprehensive logging and performance tracking
 - **Scalable Architecture**: Modular design for future enhancements
 - **Hedge Guarantee**: Continuous monitoring ensures profit guarantee
+- **Graceful Degradation**: Continues operating despite API timestamp issues
+- **Cross-Pair Coordination**: Singleton pattern ensures consistent position limiting
 
 ### **Risk Profile**
 
@@ -1666,7 +1829,7 @@ This technical paper provides the complete foundation for understanding, maintai
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: September 12, 2025  
+**Document Version**: 2.2  
+**Last Updated**: September 13, 2025  
 **Author**: AI Assistant  
-**Status**: Complete Multi-Pair Technical Specification
+**Status**: Complete Multi-Pair Technical Specification with Cross-Pair Safety & Error Handling

@@ -26,7 +26,7 @@ export interface PairServices {
 }
 
 export class PairFactory {
-  private static sizingService = new MultiPairSizingService();
+  private static sizingService = MultiPairSizingService.getInstance();
 
   /**
    * Create all services for a specific pair with automatic sizing

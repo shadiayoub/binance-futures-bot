@@ -106,6 +106,33 @@ export class TechnicalAnalysis {
   }
 
   /**
+   * Calculate VWAP (Volume Weighted Average Price)
+   */
+  calculateVWAP(marketData: MarketData[]): number {
+    if (marketData.length === 0) {
+      return 0;
+    }
+
+    let totalVolumePrice = 0;
+    let totalVolume = 0;
+
+    for (const data of marketData) {
+      totalVolumePrice += data.price * data.volume;
+      totalVolume += data.volume;
+    }
+
+    return totalVolume > 0 ? totalVolumePrice / totalVolume : 0;
+  }
+
+  /**
+   * Calculate VWAP distance (how far current price is from VWAP)
+   */
+  calculateVWAPDistance(currentPrice: number, vwap: number): number {
+    if (vwap === 0) return 0;
+    return ((currentPrice - vwap) / vwap) * 100; // Return as percentage
+  }
+
+  /**
    * Get comprehensive technical indicators
    */
   getTechnicalIndicators(marketData: MarketData[]): TechnicalIndicators {
@@ -123,14 +150,23 @@ export class TechnicalAnalysis {
     const lastVolume = volumes[volumes.length - 1] ?? 0;
     const volumeRatio = this.calculateVolumeRatio(lastVolume, volumeSma);
     
-    // Debug logging for volume analysis
-    logger.info('🔍 Volume Calculation Debug', {
+    // Calculate VWAP and distance
+    const vwap = this.calculateVWAP(marketData);
+    const currentPrice = prices[prices.length - 1] ?? 0;
+    const vwapDistance = this.calculateVWAPDistance(currentPrice, vwap);
+    
+    // Debug logging for volume and VWAP analysis
+    logger.info('🔍 Volume & VWAP Calculation Debug', {
       lastVolume: lastVolume.toFixed(2),
       volumeSma: volumeSma.toFixed(2),
       volumeRatio: volumeRatio.toFixed(2),
+      vwap: vwap.toFixed(4),
+      currentPrice: currentPrice.toFixed(4),
+      vwapDistance: vwapDistance.toFixed(2) + '%',
       volumesLength: volumes.length,
       lastFewVolumes: volumes.slice(-3).map(v => v.toFixed(2))
     });
+    
     const trend = this.determineTrend(emaFast, emaSlow);
 
     return {
@@ -139,7 +175,9 @@ export class TechnicalAnalysis {
       emaSlow,
       volumeSma,
       volumeRatio,
-      trend
+      trend,
+      vwap,
+      vwapDistance
     };
   }
 

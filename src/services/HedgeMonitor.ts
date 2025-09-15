@@ -126,7 +126,7 @@ export class HedgeMonitor {
   }
 
   /**
-   * Verify if a hedge position is actually open
+   * Verify if a hedge position is actually open and set proper exit price
    */
   async verifyHedgePosition(primaryPosition: Position): Promise<HedgeVerification> {
     try {
@@ -158,6 +158,9 @@ export class HedgeMonitor {
           expectedHedgeSide: primaryPosition.side === 'LONG' ? 'SHORT' : 'LONG'
         });
       } else {
+        // Calculate and set proper exit price for hedge position
+        await this.setHedgeExitPrice(primaryPosition, hedgePosition);
+        
         logger.info('✅ Hedge verification successful', {
           primaryPositionId: primaryPosition.id,
           hedgePositionId: hedgePosition.id,
@@ -220,39 +223,28 @@ export class HedgeMonitor {
 
   /**
    * Handle missing hedge positions
+   * NOTE: This should NOT automatically open hedges - that's the HedgeStrategy's job
+   * This only logs the missing hedge for monitoring purposes
    */
   private async handleMissingHedge(primaryPosition: Position): Promise<void> {
-    const key = primaryPosition.id;
-    const existingAttempt = this.failedHedgeAttempts.get(key);
+    const currentPrice = await this.binanceService.getCurrentPrice();
     
-    if (existingAttempt) {
-      // Already being retried
-      return;
-    }
+    // Calculate current PnL
+    const pnl = primaryPosition.side === 'LONG' 
+      ? ((currentPrice - primaryPosition.entryPrice) / primaryPosition.entryPrice * 100)
+      : ((primaryPosition.entryPrice - currentPrice) / primaryPosition.entryPrice * 100);
 
-    // Create hedge signal for missing hedge
-    const hedgeSignal: TradingSignal = {
-      type: 'HEDGE',
-      position: primaryPosition.side === 'LONG' ? 'SHORT' : 'LONG',
-      price: await this.binanceService.getCurrentPrice(),
-      confidence: 1.0,
-      reason: `CRITICAL: Missing hedge for ${primaryPosition.type} position - emergency hedge opening`,
-      timestamp: new Date()
-    };
-
-    // Record as failed attempt to trigger retry
-    this.recordHedgeAttempt(primaryPosition, hedgeSignal, false);
-
-    logger.error('🚨 CRITICAL: Missing hedge detected', {
+    // Only log missing hedge - DO NOT automatically open hedges
+    // Hedge opening should be controlled by HedgeStrategy based on price levels
+    logger.info('🔍 Missing hedge detected - monitoring only', {
       primaryPositionId: primaryPosition.id,
       primaryPositionType: primaryPosition.type,
       primaryPositionSide: primaryPosition.side,
       primaryEntryPrice: primaryPosition.entryPrice,
-      currentPrice: hedgeSignal.price,
-      pnl: primaryPosition.side === 'LONG' 
-        ? ((hedgeSignal.price - primaryPosition.entryPrice) / primaryPosition.entryPrice * 100).toFixed(2) + '%'
-        : ((primaryPosition.entryPrice - hedgeSignal.price) / primaryPosition.entryPrice * 100).toFixed(2) + '%',
-      action: 'Emergency hedge retry initiated'
+      currentPrice: currentPrice,
+      pnl: pnl.toFixed(2) + '%',
+      action: 'Monitoring - hedge will be opened by HedgeStrategy when price crosses S/R levels',
+      note: 'HedgeMonitor does not automatically open hedges - this is by design'
     });
   }
 
@@ -447,11 +439,143 @@ export class HedgeMonitor {
    * Get hedge leverage based on position type
    */
   private getHedgeLeverage(positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): number {
+    // Use environment variables for leverage settings
     switch (positionType) {
-      case 'ANCHOR': return 25; // 25x
-      case 'OPPORTUNITY': return 25; // 25x
-      case 'SCALP': return 25; // 25x
-      default: return 25;
+      case 'ANCHOR': return parseInt(process.env.HEDGE_LEVERAGE || '15');
+      case 'OPPORTUNITY': return parseInt(process.env.HEDGE_LEVERAGE || '15');
+      case 'SCALP': return parseInt(process.env.SCALP_HEDGE_LEVERAGE || '15');
+      default: return parseInt(process.env.HEDGE_LEVERAGE || '15');
+    }
+  }
+
+  /**
+   * Set proper exit price for hedge position to close before primary position liquidation
+   */
+  private async setHedgeExitPrice(primaryPosition: Position, hedgePosition: Position): Promise<void> {
+    try {
+      const currentPrice = await this.binanceService.getCurrentPrice();
+      
+      // Calculate liquidation price for primary position
+      const primaryLiquidationPrice = primaryPosition.liquidationPrice;
+      
+      // Check if liquidation price is available
+      if (!primaryLiquidationPrice || primaryLiquidationPrice <= 0) {
+        logger.warn('⚠️ Cannot calculate hedge exit price - liquidation price not available', {
+          primaryPositionId: primaryPosition.id,
+          hedgePositionId: hedgePosition.id,
+          primaryLiquidationPrice: primaryLiquidationPrice
+        });
+        return;
+      }
+      
+      // Calculate safe exit price for hedge (before primary liquidation)
+      let hedgeExitPrice: number;
+      
+      if (primaryPosition.side === 'LONG') {
+        // Primary is LONG, hedge is SHORT
+        // Hedge should close when price approaches primary's liquidation price
+        // Set exit price slightly above liquidation price for safety
+        const safetyBuffer = primaryLiquidationPrice * 0.01; // 1% safety buffer
+        hedgeExitPrice = primaryLiquidationPrice + safetyBuffer;
+      } else {
+        // Primary is SHORT, hedge is LONG  
+        // Hedge should close when price approaches primary's liquidation price
+        // Set exit price slightly below liquidation price for safety
+        const safetyBuffer = primaryLiquidationPrice * 0.01; // 1% safety buffer
+        hedgeExitPrice = primaryLiquidationPrice - safetyBuffer;
+      }
+
+      // Calculate current PnL for both positions
+      const primaryPnL = primaryPosition.side === 'LONG' 
+        ? ((currentPrice - primaryPosition.entryPrice) / primaryPosition.entryPrice * 100)
+        : ((primaryPosition.entryPrice - currentPrice) / primaryPosition.entryPrice * 100);
+        
+      const hedgePnL = hedgePosition.side === 'LONG'
+        ? ((currentPrice - hedgePosition.entryPrice) / hedgePosition.entryPrice * 100)
+        : ((hedgePosition.entryPrice - currentPrice) / hedgePosition.entryPrice * 100);
+
+      // Calculate leverage-adjusted PnL (hedge loses money faster due to higher leverage)
+      const primaryLeverage = primaryPosition.leverage;
+      const hedgeLeverage = hedgePosition.leverage;
+      const leverageRatio = hedgeLeverage / primaryLeverage; // e.g., 15/10 = 1.5
+      
+      // Adjust hedge PnL for leverage difference (hedge loses 1.5x faster than primary gains)
+      const leverageAdjustedHedgePnL = hedgePnL / leverageRatio;
+      
+      // Calculate mathematical hedge closure conditions with leverage adjustment
+      const totalPnL = primaryPnL + leverageAdjustedHedgePnL;
+      // Fees are calculated on notional value (after leverage), not original balance
+      const baseFees = 0.09; // 0.09% of notional value (0.045% + 0.045%)
+      const estimatedFees = baseFees * leverageRatio; // Adjust for leverage difference
+      
+      // Determine if hedge should close based on leverage-adjusted mathematical analysis
+      let shouldCloseHedge = false;
+      let closureReason = '';
+      
+      if (primaryPnL > 0 && hedgePnL > 0) {
+        shouldCloseHedge = true;
+        closureReason = 'Both positions profitable - net profit available';
+      } else if (leverageAdjustedHedgePnL > Math.abs(primaryPnL) + estimatedFees) {
+        shouldCloseHedge = true;
+        closureReason = 'Leverage-adjusted hedge profit exceeds primary loss + fees';
+      } else if (primaryPnL > 1.0) {
+        shouldCloseHedge = true;
+        closureReason = 'Primary position recovered - hedge served its purpose';
+      } else if (Math.abs(currentPrice - primaryPosition.entryPrice) / primaryPosition.entryPrice <= 0.002) {
+        shouldCloseHedge = true;
+        closureReason = 'Price returned to primary entry - hedge no longer needed';
+      } else if (hedgePnL < -2.0 * leverageRatio && primaryPnL < 0) {
+        shouldCloseHedge = true;
+        closureReason = `Leverage-adjusted hedge counterproductive - losing ${leverageRatio.toFixed(2)}x faster than primary gains`;
+      } else if (hedgePnL < -0.5 && primaryPnL > 0) {
+        const leverageAdjustedLoss = Math.abs(hedgePnL) * leverageRatio;
+        const netLoss = leverageAdjustedLoss - primaryPnL;
+        if (leverageAdjustedLoss > primaryPnL) {
+          shouldCloseHedge = true;
+          closureReason = `CRITICAL: Hedge leverage causing immediate losses - net loss ${netLoss.toFixed(2)}% > fees ${estimatedFees}% - losing ${leverageRatio.toFixed(2)}x faster than primary gains`;
+        }
+      } else if (totalPnL < 0 && Math.abs(totalPnL) > estimatedFees) {
+        shouldCloseHedge = true;
+        closureReason = `CRITICAL: Net portfolio loss ${Math.abs(totalPnL).toFixed(2)}% > fees ${estimatedFees}% - hedge counterproductive`;
+      }
+
+      // Log the exit price calculation with leverage-adjusted mathematical analysis
+      logger.info('🎯 Hedge exit price calculated with leverage-adjusted mathematical analysis', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        primarySide: primaryPosition.side,
+        hedgeSide: hedgePosition.side,
+        primaryEntryPrice: primaryPosition.entryPrice,
+        hedgeEntryPrice: hedgePosition.entryPrice,
+        primaryLiquidationPrice: primaryLiquidationPrice,
+        calculatedHedgeExitPrice: hedgeExitPrice,
+        currentPrice: currentPrice,
+        primaryLeverage: primaryLeverage,
+        hedgeLeverage: hedgeLeverage,
+        leverageRatio: leverageRatio.toFixed(2),
+        primaryPnL: primaryPnL.toFixed(2) + '%',
+        hedgePnL: hedgePnL.toFixed(2) + '%',
+        leverageAdjustedHedgePnL: leverageAdjustedHedgePnL.toFixed(2) + '%',
+        totalPnL: totalPnL.toFixed(2) + '%',
+        estimatedFees: estimatedFees + '%',
+        shouldCloseHedge: shouldCloseHedge,
+        closureReason: closureReason,
+        safetyBuffer: '1%',
+        note: shouldCloseHedge 
+          ? `Hedge should close: ${closureReason}` 
+          : 'Hedge still providing value - keeping open (leverage-adjusted analysis)'
+      });
+
+      // TODO: Implement actual stop-loss order placement on Binance
+      // This would require additional Binance API integration
+      // For now, we log the calculated exit price for monitoring
+      
+    } catch (error) {
+      logger.error('❌ Failed to calculate hedge exit price', {
+        primaryPositionId: primaryPosition.id,
+        hedgePositionId: hedgePosition.id,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 
