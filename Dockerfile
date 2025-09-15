@@ -17,4 +17,4 @@ COPY . .
 RUN pnpm build
 
 # Start the application
-CMD ["pnpm", "multi-pair"] 
+CMD ["pnpm", "start"] 

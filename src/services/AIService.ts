@@ -16,11 +16,84 @@ export class AIService {
   private config: AIConfig;
   private apiCallCount: number = 0;
   private lastApiReset: Date = new Date();
-  private cache: Map<string, { data: any; timestamp: Date }> = new Map();
-  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private cache: Map<string, { data: any; timestamp: Date; volatility?: number }> = new Map();
+  private readonly CACHE_DURATION = 15 * 60 * 1000; // 15 minutes (increased from 5)
+  private readonly HIGH_VOLATILITY_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for high volatility
+  
+  // Circuit breaker pattern for API failures
+  private consecutiveFailures: number = 0;
+  private lastFailureTime: Date | null = null;
+  private readonly MAX_CONSECUTIVE_FAILURES = 3;
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
   constructor(config: AIConfig) {
     this.config = config;
+  }
+
+  /**
+   * Check if circuit breaker is open (too many failures)
+   */
+  private isCircuitBreakerOpen(): boolean {
+    if (this.consecutiveFailures < this.MAX_CONSECUTIVE_FAILURES) {
+      return false;
+    }
+    
+    if (this.lastFailureTime && 
+        (Date.now() - this.lastFailureTime.getTime()) > this.CIRCUIT_BREAKER_TIMEOUT) {
+      // Reset circuit breaker after timeout
+      this.consecutiveFailures = 0;
+      this.lastFailureTime = null;
+      logger.info('🔧 Circuit breaker reset - API calls resumed');
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Record API call success
+   */
+  private recordApiSuccess(): void {
+    this.consecutiveFailures = 0;
+    this.lastFailureTime = null;
+  }
+
+  /**
+   * Record API call failure
+   */
+  private recordApiFailure(): void {
+    this.consecutiveFailures++;
+    this.lastFailureTime = new Date();
+    
+    if (this.consecutiveFailures >= this.MAX_CONSECUTIVE_FAILURES) {
+      logger.warn('🔧 Circuit breaker opened - API calls suspended', {
+        consecutiveFailures: this.consecutiveFailures,
+        timeoutMinutes: this.CIRCUIT_BREAKER_TIMEOUT / (1000 * 60)
+      });
+    }
+  }
+
+  /**
+   * Calculate market volatility for intelligent caching
+   */
+  private calculateVolatility(marketData: MarketData[]): number {
+    if (marketData.length < 2) return 0;
+    
+    const prices = marketData.slice(-20).map(data => data.price); // Last 20 data points
+    const returns = [];
+    
+    for (let i = 1; i < prices.length; i++) {
+      const currentPrice = prices[i];
+      const previousPrice = prices[i-1];
+      if (currentPrice !== undefined && previousPrice !== undefined && previousPrice !== 0) {
+        returns.push((currentPrice - previousPrice) / previousPrice);
+      }
+    }
+    
+    const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
+    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length;
+    
+    return Math.sqrt(variance) * 100; // Return as percentage
   }
 
   /**
@@ -33,34 +106,50 @@ export class AIService {
     currentPrice: number
   ): Promise<AIAnalysisResult | null> {
     try {
+      // Calculate market volatility for intelligent caching
+      const volatility = this.calculateVolatility(marketData);
+      const isHighVolatility = volatility > 2.0; // 2% volatility threshold
+      
+      // Check cache with volatility-based duration
+      const cacheKey = `${symbol}_comprehensive`;
+      const cached = this.cache.get(cacheKey);
+      const cacheDuration = isHighVolatility ? this.HIGH_VOLATILITY_CACHE_DURATION : this.CACHE_DURATION;
+      
+      if (cached && (Date.now() - cached.timestamp.getTime()) < cacheDuration) {
+        logger.info('🤖 Using cached AI analysis', { 
+          symbol, 
+          volatility: volatility.toFixed(2) + '%',
+          cacheAge: Math.round((Date.now() - cached.timestamp.getTime()) / 1000) + 's'
+        });
+        return cached.data;
+      }
+
       if (!this.canMakeApiCall()) {
         logger.warn('AI API call limit reached, using cached data or fallback');
         return this.getCachedAnalysis(symbol) || null;
       }
 
-      logger.info('🤖 Starting comprehensive AI analysis', { symbol, currentPrice });
+      if (this.isCircuitBreakerOpen()) {
+        logger.warn('🔧 Circuit breaker is open - using cached data or fallback');
+        return this.getCachedAnalysis(symbol) || null;
+      }
 
-      // Run all AI analyses in parallel for efficiency
-      const [
-        sentiment,
-        patterns,
-        marketRegime,
-        riskAssessment,
-        correlations
-      ] = await Promise.allSettled([
-        this.getSentimentAnalysis(symbol),
-        this.getPatternRecognition(symbol, marketData, currentPrice),
-        this.getMarketRegimeDetection(symbol, marketData, technicalIndicators),
-        this.getRiskAssessment(symbol, marketData, technicalIndicators, currentPrice),
-        this.getCorrelationAnalysis(symbol, marketData)
-      ]);
+      logger.info('🤖 Starting comprehensive AI analysis', { 
+        symbol, 
+        currentPrice, 
+        volatility: volatility.toFixed(2) + '%',
+        isHighVolatility 
+      });
 
-      // Process results and handle failures gracefully
-      const sentimentData = sentiment.status === 'fulfilled' ? sentiment.value : this.getDefaultSentiment();
-      const patternData = patterns.status === 'fulfilled' ? patterns.value : [];
-      const regimeData = marketRegime.status === 'fulfilled' ? marketRegime.value : this.getDefaultMarketRegime();
-      const riskData = riskAssessment.status === 'fulfilled' ? riskAssessment.value : this.getDefaultRiskAssessment();
-      const correlationData = correlations.status === 'fulfilled' ? correlations.value : [];
+      // Use batch analysis to reduce API calls from 4 to 1
+      const batchAnalysis = await this.getBatchAnalysis(symbol, marketData, technicalIndicators, currentPrice);
+      
+      // Extract individual components from batch analysis
+      const sentimentData = batchAnalysis.sentiment || this.getDefaultSentiment();
+      const patternData = batchAnalysis.patterns || [];
+      const regimeData = batchAnalysis.marketRegime || this.getDefaultMarketRegime();
+      const riskData = batchAnalysis.riskAssessment || this.getDefaultRiskAssessment();
+      const correlationData = batchAnalysis.correlations || [];
 
       // Calculate overall confidence and trading recommendation
       const overallConfidence = this.calculateOverallConfidence(
@@ -89,8 +178,8 @@ export class AIService {
         timestamp: new Date()
       };
 
-      // Cache the result
-      this.cache.set(`analysis_${symbol}`, { data: result, timestamp: new Date() });
+      // Cache the result with volatility information
+      this.cache.set(cacheKey, { data: result, timestamp: new Date(), volatility });
 
       logger.info('🤖 AI analysis completed', {
         symbol,
@@ -107,6 +196,80 @@ export class AIService {
       logger.error('Error in comprehensive AI analysis', error);
       return this.config.fallbackToTechnicalOnly ? null : this.getCachedAnalysis(symbol);
     }
+  }
+
+  /**
+   * Get batch analysis combining all AI analyses into a single API call
+   */
+  private async getBatchAnalysis(
+    symbol: string,
+    marketData: MarketData[],
+    technicalIndicators: TechnicalIndicators,
+    currentPrice: number
+  ): Promise<any> {
+    const cacheKey = `${symbol}_batch`;
+    const cached = this.cache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp.getTime()) < this.CACHE_DURATION) {
+      return cached.data;
+    }
+
+    const recentData = marketData.slice(-50); // Last 50 data points
+    const priceData = recentData.map(data => ({
+      timestamp: data.timestamp,
+      price: data.price,
+      volume: data.volume
+    }));
+
+    const prompt = `
+    Analyze ${symbol} comprehensively. Provide ALL analyses in a single JSON response:
+
+    1. SENTIMENT ANALYSIS:
+    - Analyze market sentiment based on price action, volume, and technical indicators
+    - Consider: bullish/bearish momentum, market psychology, trend strength
+    - Return: sentiment (BULLISH/BEARISH/NEUTRAL), confidence (0-1), reasoning
+
+    2. PATTERN RECOGNITION:
+    - Identify chart patterns: support/resistance levels, trend lines, chart patterns
+    - Look for: triangles, flags, head & shoulders, double tops/bottoms, etc.
+    - Return: array of patterns with type, strength, price levels
+
+    3. MARKET REGIME DETECTION:
+    - Determine current market regime: trending, ranging, volatile, consolidation
+    - Analyze: trend direction, volatility, momentum, market structure
+    - Return: regime (TRENDING_UP/TRENDING_DOWN/RANGING/VOLATILE), confidence, characteristics
+
+    4. RISK ASSESSMENT:
+    - Evaluate market risk factors: volatility, liquidity, correlation risks
+    - Consider: position sizing, stop losses, market conditions
+    - Return: overallRisk (LOW/MEDIUM/HIGH), riskFactors array, recommendations
+
+    5. CORRELATION ANALYSIS:
+    - Analyze correlations with major assets (BTC, ETH, market indices)
+    - Return: correlations array with asset, correlation strength, significance
+
+    Current Data:
+    - Symbol: ${symbol}
+    - Current Price: ${currentPrice}
+    - Recent Price Data: ${JSON.stringify(priceData.slice(-10))}
+    - Technical Indicators: RSI=${technicalIndicators.rsi?.toFixed(2)}, EMA_Fast=${technicalIndicators.emaFast?.toFixed(2)}, EMA_Slow=${technicalIndicators.emaSlow?.toFixed(2)}
+
+    Respond with JSON format containing all five analyses:
+    {
+      "sentiment": { "sentiment": "BULLISH", "confidence": 0.75, "reasoning": "..." },
+      "patterns": [{ "patternType": "SUPPORT", "strength": 0.8, "priceLevel": 0.45 }],
+      "marketRegime": { "regime": "TRENDING_UP", "confidence": 0.7, "characteristics": "..." },
+      "riskAssessment": { "overallRisk": "MEDIUM", "riskFactors": ["..."], "recommendations": "..." },
+      "correlations": [{ "asset": "BTC", "correlation": 0.8, "significance": "HIGH" }]
+    }
+    `;
+
+    const response = await this.callDeepSeekAPI(prompt);
+    
+    // Cache the batch result
+    this.cache.set(cacheKey, { data: response, timestamp: new Date() });
+    
+    return response;
   }
 
   /**
@@ -435,7 +598,7 @@ export class AIService {
             }
           ],
           temperature: 0.3,
-          max_tokens: 2000
+          max_tokens: 1000 // Reduced from 2000 to save costs
         },
         {
           headers: {
@@ -447,6 +610,7 @@ export class AIService {
       );
 
       this.apiCallCount++;
+      this.recordApiSuccess(); // Record successful API call
       
       // Parse the response
       const content = response.data?.choices?.[0]?.message?.content;
@@ -454,15 +618,21 @@ export class AIService {
         throw new Error('No content in API response');
       }
 
-      // Try to parse as JSON
+      // Try to parse as JSON directly first
       try {
         return JSON.parse(content);
       } catch (parseError) {
+        // If direct parsing fails, try to extract JSON from markdown or other formats
+        const parsedResponse = this.parseTextResponse(content);
+        if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse !== null) {
+          return parsedResponse;
+        }
         logger.warn('Failed to parse AI response as JSON, using fallback', { content });
         return this.parseTextResponse(content);
       }
 
     } catch (error) {
+      this.recordApiFailure(); // Record failed API call
       logger.error('DeepSeek API call failed', error);
       throw error;
     }
@@ -472,7 +642,31 @@ export class AIService {
    * Parse text response when JSON parsing fails
    */
   private parseTextResponse(content: string): any {
-    // Simple text parsing fallback
+    // First, try to extract JSON from markdown code blocks
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]);
+        logger.info('Successfully parsed JSON from markdown code block');
+        return parsed;
+      } catch (parseError) {
+        logger.warn('Failed to parse extracted JSON from markdown', { extractedJson: jsonMatch[1] });
+      }
+    }
+
+    // Try to find JSON object in the content without markdown
+    const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonObjectMatch) {
+      try {
+        const parsed = JSON.parse(jsonObjectMatch[0]);
+        logger.info('Successfully parsed JSON object from content');
+        return parsed;
+      } catch (parseError) {
+        logger.warn('Failed to parse JSON object from content', { jsonObject: jsonObjectMatch[0] });
+      }
+    }
+
+    // Fallback to simple text parsing
     const bullishKeywords = ['bullish', 'positive', 'upward', 'buy', 'strong'];
     const bearishKeywords = ['bearish', 'negative', 'downward', 'sell', 'weak'];
     
@@ -518,28 +712,6 @@ export class AIService {
     };
   }
 
-  /**
-   * Calculate volatility from market data
-   */
-  private calculateVolatility(marketData: MarketData[]): number {
-    if (marketData.length < 2) return 0;
-    
-    const prices = marketData.map(d => d.price);
-    const returns = [];
-    
-    for (let i = 1; i < prices.length; i++) {
-      const currentPrice = prices[i];
-      const previousPrice = prices[i-1];
-      if (currentPrice !== undefined && previousPrice !== undefined && previousPrice !== 0) {
-        returns.push((currentPrice - previousPrice) / previousPrice);
-      }
-    }
-    
-    const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
-    
-    return Math.sqrt(variance);
-  }
 
   /**
    * Calculate overall confidence from all AI factors
@@ -704,11 +876,21 @@ export class AIService {
   /**
    * Get API usage statistics
    */
-  getApiUsageStats(): { callsThisHour: number; maxCallsPerHour: number; resetTime: Date } {
+  getApiUsageStats(): { 
+    callsThisHour: number; 
+    maxCallsPerHour: number; 
+    resetTime: Date;
+    circuitBreakerOpen: boolean;
+    consecutiveFailures: number;
+    lastFailureTime: Date | null;
+  } {
     return {
       callsThisHour: this.apiCallCount,
       maxCallsPerHour: this.config.maxApiCallsPerHour,
-      resetTime: this.lastApiReset
+      resetTime: this.lastApiReset,
+      circuitBreakerOpen: this.isCircuitBreakerOpen(),
+      consecutiveFailures: this.consecutiveFailures,
+      lastFailureTime: this.lastFailureTime
     };
   }
 }

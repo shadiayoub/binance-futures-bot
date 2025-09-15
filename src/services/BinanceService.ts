@@ -6,6 +6,7 @@ import {
   BotState 
 } from '../types';
 import { logger } from '../utils/logger';
+// WebSocketService import removed to avoid circular dependency
 
 export class BinanceService {
   private client: any;
@@ -631,6 +632,9 @@ export class BinanceService {
         available: freshBalance.available.toFixed(2),
         cacheAge: '0s (fresh)'
       });
+
+      // WebSocket broadcast removed to avoid circular dependency
+      // Balance updates are logged instead
       
       return freshBalance;
     } catch (error) {

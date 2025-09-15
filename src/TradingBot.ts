@@ -65,6 +65,8 @@ export class TradingBot {
       this.positionManager,
       this.aiService
     );
+
+    // Bot registration removed to avoid circular dependency with WebSocketService
   }
 
   /**
@@ -111,8 +113,10 @@ export class TradingBot {
       
       logger.info('Starting trading bot with hybrid timing system...');
       
-      // Heavy Analysis Loop: Every 2 minutes (market data, level learning, comprehensive analysis)
-      this.heavyAnalysisJob = cron.schedule('*/2 * * * *', async () => {
+      // WebSocket service removed for standalone operation
+      
+      // Heavy Analysis Loop: Every 15 minutes (market data, level learning, comprehensive analysis) - OPTIMIZED FOR COST
+      this.heavyAnalysisJob = cron.schedule('*/15 * * * *', async () => {
         await this.heavyAnalysisLoop();
       }, {
         scheduled: false

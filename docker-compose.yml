@@ -1,7 +1,41 @@
+#version: '3.8'
+
 services:
-  ada-trading-bot:
+# MongoDB instance
+  mongo-bot:
+    image: mongo:7.0
+    container_name: mongo-bot
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: botuserdbu
+      MONGO_INITDB_ROOT_PASSWORD: botPaswqwrnoifndsowe3qwe
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./db_data:/data/db
+    networks:
+      - bot-network
+
+  ## MongoDB admin UI
+  mongo-express-bot:
+    image: mongo-express
+    container_name: mongo-express-bot
+    restart: unless-stopped
+    ports:
+      - "8992:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: botuserdbu
+      ME_CONFIG_MONGODB_ADMINPASSWORD: botPaswqwrnoifndsowe3qwe
+      ME_CONFIG_MONGODB_SERVER: mongo-bot
+      ME_CONFIG_BASICAUTH_USERNAME: adminu
+      ME_CONFIG_BASICAUTH_PASSWORD: adminPassword
+    depends_on:
+      - mongo-bot
+    networks:
+      - bot-network
+
+  trading-bot:
     image: node:18-alpine
-    container_name: ada-futures-bot
     working_dir: /app
     volumes:
       - .:/app
@@ -17,7 +51,7 @@ services:
     command: sh -c "npm install --omit=dev && npm run start"
     restart: unless-stopped
     networks:
-      - trading-network
-
+      - bot-network
 networks:
-  trading-network:
+  bot-network:
+    driver: bridge
