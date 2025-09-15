@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '2.0.2';
+export const BOT_VERSION = '2.0.3';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,

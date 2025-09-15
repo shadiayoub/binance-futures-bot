@@ -1,6 +1,6 @@
 {
   "name": "ada-futures-bot",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "AI-Enhanced ADA Futures Trading Bot with 4-Position Hedge System and DeepSeek Integration",
   "main": "dist/index.js",
   "scripts": {

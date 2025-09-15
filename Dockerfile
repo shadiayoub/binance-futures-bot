@@ -8,13 +8,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN  npm install -g npm@11.6.0 && npm install
+RUN  npm install -g npm@11.6.0 pnpm  && pnpm install
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN pnpm build
 
 # Start the application
-CMD ["npm", "run", "multi-pair"] 
+CMD ["pnpm", "multi-pair"] 

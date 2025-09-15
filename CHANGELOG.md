@@ -2,6 +2,61 @@
 
 All notable changes to the ADA Futures Trading Bot will be documented in this file.
 
+## [2.0.3] - 2025-01-27
+
+### 📊 Monitoring and Analysis Update
+
+This release focuses on monitoring improvements and AI API call frequency documentation.
+
+### ✨ New Features
+
+#### Enhanced Monitoring
+- **Improved hedge trigger monitoring** with detailed log patterns for remote server tracking
+- **AI API call frequency documentation** with comprehensive rate limiting analysis
+- **Real-time position monitoring** capabilities for hedge trigger conditions
+
+### 🔧 Technical Improvements
+
+#### AI API Optimization
+- **Documented AI call frequency**: Every 2 minutes (30 calls/hour)
+- **Rate limit utilization**: 60% of 50 calls/hour limit
+- **Caching system**: 2-minute cache duration for efficient API usage
+- **Fallback mechanisms**: Technical analysis fallback when API limits reached
+
+#### Monitoring Enhancements
+- **Hedge trigger logging**: Detailed logs for support/resistance level breaches
+- **Position status tracking**: Real-time monitoring of LONG ANCHOR positions
+- **AI analysis logging**: Comprehensive AI analysis completion tracking
+
+### 📋 Documentation Updates
+
+#### AI Integration Guide
+- **API call frequency documentation**: Complete breakdown of AI usage patterns
+- **Rate limiting analysis**: Detailed explanation of 30/50 calls per hour utilization
+- **Caching behavior**: Documentation of 2-minute cache system
+- **Fallback strategies**: Technical analysis fallback when AI unavailable
+
+#### Monitoring Guide
+- **Remote server monitoring**: Log patterns for hedge trigger detection
+- **Position tracking**: Real-time position status monitoring
+- **Hedge conditions**: Support level breach detection patterns
+
+### 🎯 Key Improvements
+
+#### AI Efficiency
+- **Optimized API usage**: Well within rate limits with 20 calls/hour safety margin
+- **Intelligent caching**: Prevents unnecessary API calls
+- **Graceful degradation**: Falls back to technical analysis when needed
+
+#### Monitoring Capabilities
+- **Real-time tracking**: Continuous monitoring of hedge trigger conditions
+- **Detailed logging**: Comprehensive logs for debugging and analysis
+- **Remote server support**: Optimized for remote server monitoring
+
+### 📊 Version Summary
+
+This release enhances the bot's monitoring capabilities and provides comprehensive documentation of AI API usage patterns, ensuring efficient operation and better visibility into hedge trigger conditions.
+
 ## [2.0.2] - 2025-01-27
 
 ### 🎯 Frequent Trading Strategy Update
