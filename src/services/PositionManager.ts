@@ -115,6 +115,11 @@ export class PositionManager {
       }
       
       const lastMarketData = marketData1h[marketData1h.length - 1];
+      if (!lastMarketData) {
+        logger.warn('❌ Signal validation failed: No last market data available');
+        return false;
+      }
+      
       const volumeRatio = lastMarketData.volume / (marketData1h.reduce((sum, data) => sum + data.volume, 0) / marketData1h.length);
       
       // Enhanced validation checks
