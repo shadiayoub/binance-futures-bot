@@ -298,6 +298,535 @@ app.get('/api/ai/stats', (req, res) => {
   }
 });
 
+// Script Execution Endpoints
+app.get('/api/scripts/levels', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    
+    const scriptPath = path.join(__dirname, '../scripts/show-levels.js');
+    
+    return exec(`node "${scriptPath}"`, { timeout: 30000 }, (error: any, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error('Error executing show-levels script', error);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to execute levels script',
+          details: error.message 
+        });
+      }
+      
+      if (stderr) {
+        logger.warn('Script stderr', stderr);
+      }
+      
+      // Parse the output to extract structured data
+      const lines = stdout.split('\n');
+      const result: any = {
+        success: true,
+        timestamp: new Date().toISOString(),
+        currentPrice: null as number | null,
+        supportLevels: [] as any[],
+        resistanceLevels: [] as any[],
+        staticLevels: {} as any,
+        levelStats: {} as any,
+        nearestSupport: null as any,
+        nearestResistance: null as any,
+        rawOutput: stdout
+      };
+      
+      let currentSection = '';
+      let currentPriceMatch = stdout.match(/CURRENT ADA PRICE: \$([0-9.]+)/);
+      if (currentPriceMatch && currentPriceMatch[1]) {
+        result.currentPrice = parseFloat(currentPriceMatch[1]);
+      }
+      
+      // Parse resistance levels
+      const resistanceMatch = stdout.match(/RESISTANCE LEVELS[^]*?(?=SUPPORT LEVELS|STATIC LEVELS|$)/s);
+      if (resistanceMatch) {
+        const resistanceLines = resistanceMatch[0].split('\n');
+        resistanceLines.forEach(line => {
+          const match = line.match(/\d+\. \$([0-9.]+) \(Strength: ([0-9.]+), Touches: (\d+)\)/);
+          if (match && match[1] && match[2] && match[3]) {
+            result.resistanceLevels.push({
+              price: parseFloat(match[1]),
+              strength: parseFloat(match[2]),
+              touches: parseInt(match[3])
+            });
+          }
+        });
+      }
+      
+      // Parse support levels
+      const supportMatch = stdout.match(/SUPPORT LEVELS[^]*?(?=STATIC LEVELS|LEVEL STATISTICS|$)/s);
+      if (supportMatch) {
+        const supportLines = supportMatch[0].split('\n');
+        supportLines.forEach(line => {
+          const match = line.match(/\d+\. \$([0-9.]+) \(Strength: ([0-9.]+), Touches: (\d+)\)/);
+          if (match && match[1] && match[2] && match[3]) {
+            result.supportLevels.push({
+              price: parseFloat(match[1]),
+              strength: parseFloat(match[2]),
+              touches: parseInt(match[3])
+            });
+          }
+        });
+      }
+      
+      // Parse static levels
+      const staticMatch = stdout.match(/STATIC LEVELS[^]*?(?=LEVEL STATISTICS|$)/s);
+      if (staticMatch) {
+        const staticLines = staticMatch[0].split('\n');
+        staticLines.forEach(line => {
+          const resistanceMatch = line.match(/Resistance (\d+): \$([0-9.]+)/);
+          const supportMatch = line.match(/Support (\d+):\s+\$([0-9.]+)/);
+          
+          if (resistanceMatch && resistanceMatch[1] && resistanceMatch[2]) {
+            result.staticLevels[`resistance${resistanceMatch[1]}`] = parseFloat(resistanceMatch[2]);
+          }
+          if (supportMatch && supportMatch[1] && supportMatch[2]) {
+            result.staticLevels[`support${supportMatch[1]}`] = parseFloat(supportMatch[2]);
+          }
+        });
+      }
+      
+      // Parse nearest levels
+      const nearestSupportMatch = stdout.match(/Nearest Support: \$([0-9.]+) \(([0-9.]+)% below\)/);
+      if (nearestSupportMatch && nearestSupportMatch[1] && nearestSupportMatch[2]) {
+        result.nearestSupport = {
+          price: parseFloat(nearestSupportMatch[1]),
+          distance: parseFloat(nearestSupportMatch[2])
+        };
+      }
+      
+      const nearestResistanceMatch = stdout.match(/Nearest Resistance: \$([0-9.]+) \(([0-9.]+)% above\)/);
+      if (nearestResistanceMatch && nearestResistanceMatch[1] && nearestResistanceMatch[2]) {
+        result.nearestResistance = {
+          price: parseFloat(nearestResistanceMatch[1]),
+          distance: parseFloat(nearestResistanceMatch[2])
+        };
+      }
+      
+      return res.json(result);
+    });
+  } catch (error) {
+    logger.error('Error in levels endpoint', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/scripts/comprehensive-levels', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    
+    const scriptPath = path.join(__dirname, '../scripts/show-comprehensive-levels.js');
+    
+    return exec(`node "${scriptPath}"`, { timeout: 30000 }, (error: any, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error('Error executing comprehensive-levels script', error);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to execute comprehensive levels script',
+          details: error.message 
+        });
+      }
+      
+      if (stderr) {
+        logger.warn('Script stderr', stderr);
+      }
+      
+      // Parse the comprehensive output
+      const result: any = {
+        success: true,
+        timestamp: new Date().toISOString(),
+        currentPrice: null as number | null,
+        currentZone: null as string | null,
+        tradingSignals: {
+          longEntry: null as any,
+          shortEntry: null as any,
+          nearestResistance: null as any,
+          nearestSupport: null as any
+        },
+        criticalLevels: {
+          resistance: [] as any[],
+          support: [] as any[]
+        },
+        highImportanceLevels: {
+          resistance: [] as any[],
+          support: [] as any[]
+        },
+        zoneBreakdown: {} as any,
+        statistics: {} as any,
+        rawOutput: stdout
+      };
+      
+      // Parse current price
+      const currentPriceMatch = stdout.match(/CURRENT ADA PRICE: \$([0-9.]+)/);
+      if (currentPriceMatch && currentPriceMatch[1]) {
+        result.currentPrice = parseFloat(currentPriceMatch[1]);
+      }
+      
+      // Parse current zone
+      const currentZoneMatch = stdout.match(/CURRENT ZONE: ([A-Z\s]+)/);
+      if (currentZoneMatch && currentZoneMatch[1]) {
+        result.currentZone = currentZoneMatch[1].trim();
+      }
+      
+      // Parse trading signals
+      const longEntryMatch = stdout.match(/LONG Entry Signal:[^]*?Price: \$([0-9.]+) \(([0-9.]+)% above current\)[^]*?Description: ([^]*?)\n[^]*?Importance: ([^]*?)\n[^]*?Zone: ([^]*?)\n/s);
+      if (longEntryMatch && longEntryMatch[1] && longEntryMatch[2] && longEntryMatch[3] && longEntryMatch[4] && longEntryMatch[5]) {
+        result.tradingSignals.longEntry = {
+          price: parseFloat(longEntryMatch[1]),
+          distance: parseFloat(longEntryMatch[2]),
+          description: longEntryMatch[3].trim(),
+          importance: longEntryMatch[4].trim(),
+          zone: longEntryMatch[5].trim()
+        };
+      }
+      
+      const shortEntryMatch = stdout.match(/SHORT Entry Signal:[^]*?Price: \$([0-9.]+) \(([0-9.]+)% below current\)[^]*?Description: ([^]*?)\n[^]*?Importance: ([^]*?)\n[^]*?Zone: ([^]*?)\n/s);
+      if (shortEntryMatch && shortEntryMatch[1] && shortEntryMatch[2] && shortEntryMatch[3] && shortEntryMatch[4] && shortEntryMatch[5]) {
+        result.tradingSignals.shortEntry = {
+          price: parseFloat(shortEntryMatch[1]),
+          distance: parseFloat(shortEntryMatch[2]),
+          description: shortEntryMatch[3].trim(),
+          importance: shortEntryMatch[4].trim(),
+          zone: shortEntryMatch[5].trim()
+        };
+      }
+      
+      // Parse nearest levels
+      const nearestResistanceMatch = stdout.match(/Nearest Resistance: \$([0-9.]+) \(([0-9.]+)% above\)[^]*?Description: ([^]*?)\n/s);
+      if (nearestResistanceMatch && nearestResistanceMatch[1] && nearestResistanceMatch[2] && nearestResistanceMatch[3]) {
+        result.tradingSignals.nearestResistance = {
+          price: parseFloat(nearestResistanceMatch[1]),
+          distance: parseFloat(nearestResistanceMatch[2]),
+          description: nearestResistanceMatch[3].trim()
+        };
+      }
+      
+      const nearestSupportMatch = stdout.match(/Nearest Support: \$([0-9.]+) \(([0-9.]+)% below\)[^]*?Description: ([^]*?)\n/s);
+      if (nearestSupportMatch && nearestSupportMatch[1] && nearestSupportMatch[2] && nearestSupportMatch[3]) {
+        result.tradingSignals.nearestSupport = {
+          price: parseFloat(nearestSupportMatch[1]),
+          distance: parseFloat(nearestSupportMatch[2]),
+          description: nearestSupportMatch[3].trim()
+        };
+      }
+      
+      // Parse critical levels
+      const criticalResistanceMatch = stdout.match(/Critical Resistance Levels:[^]*?(?=Critical Support Levels:|$)/s);
+      if (criticalResistanceMatch) {
+        const lines = criticalResistanceMatch[0].split('\n');
+        lines.forEach(line => {
+          const match = line.match(/\$([0-9.]+) \(([0-9.]+)% above\) - ([^]*?) \[([^\]]+)\]/);
+          if (match && match[1] && match[2] && match[3] && match[4]) {
+            result.criticalLevels.resistance.push({
+              price: parseFloat(match[1]),
+              distance: parseFloat(match[2]),
+              description: match[3].trim(),
+              zone: match[4].trim()
+            });
+          }
+        });
+      }
+      
+      const criticalSupportMatch = stdout.match(/Critical Support Levels:[^]*?(?=HIGH IMPORTANCE LEVELS:|$)/s);
+      if (criticalSupportMatch) {
+        const lines = criticalSupportMatch[0].split('\n');
+        lines.forEach(line => {
+          const match = line.match(/\$([0-9.]+) \(([0-9.]+)% below\) - ([^]*?) \[([^\]]+)\]/);
+          if (match && match[1] && match[2] && match[3] && match[4]) {
+            result.criticalLevels.support.push({
+              price: parseFloat(match[1]),
+              distance: parseFloat(match[2]),
+              description: match[3].trim(),
+              zone: match[4].trim()
+            });
+          }
+        });
+      }
+      
+      // Parse statistics
+      const totalLevelsMatch = stdout.match(/Total Levels: (\d+)/);
+      const resistanceLevelsMatch = stdout.match(/Resistance Levels: (\d+)/);
+      const supportLevelsMatch = stdout.match(/Support Levels: (\d+)/);
+      const criticalLevelsMatch = stdout.match(/Critical Levels: (\d+)/);
+      const highImportanceMatch = stdout.match(/High Importance: (\d+)/);
+      
+      if (totalLevelsMatch && totalLevelsMatch[1]) result.statistics.totalLevels = parseInt(totalLevelsMatch[1]);
+      if (resistanceLevelsMatch && resistanceLevelsMatch[1]) result.statistics.resistanceLevels = parseInt(resistanceLevelsMatch[1]);
+      if (supportLevelsMatch && supportLevelsMatch[1]) result.statistics.supportLevels = parseInt(supportLevelsMatch[1]);
+      if (criticalLevelsMatch && criticalLevelsMatch[1]) result.statistics.criticalLevels = parseInt(criticalLevelsMatch[1]);
+      if (highImportanceMatch && highImportanceMatch[1]) result.statistics.highImportance = parseInt(highImportanceMatch[1]);
+      
+      return res.json(result);
+    });
+  } catch (error) {
+    logger.error('Error in comprehensive-levels endpoint', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/scripts/sizing-recommendations', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    
+    const scriptPath = path.join(__dirname, '../scripts/show-sizing-recommendations.js');
+    
+    return exec(`node "${scriptPath}"`, { timeout: 30000 }, (error: any, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error('Error executing sizing-recommendations script', error);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to execute sizing recommendations script',
+          details: error.message 
+        });
+      }
+      
+      if (stderr) {
+        logger.warn('Script stderr', stderr);
+      }
+      
+      // Parse the sizing recommendations output
+      const result: any = {
+        success: true,
+        timestamp: new Date().toISOString(),
+        recommendations: {} as any,
+        currentConfiguration: null as any,
+        safetyGuidelines: [] as string[],
+        rawOutput: stdout
+      };
+      
+      // Parse recommendations for different pair counts
+      for (let numPairs = 1; numPairs <= 5; numPairs++) {
+        const pairMatch = stdout.match(new RegExp(`${numPairs} Pair${numPairs > 1 ? 's' : ''}:[^]*?Anchor: ([0-9.]+)%[^]*?Hedge:  ([0-9.]+)%[^]*?Total:  ([0-9.]+)% exposure[^]*?Status: ([^]*?)\n`, 's'));
+        if (pairMatch && pairMatch[1] && pairMatch[2] && pairMatch[3] && pairMatch[4]) {
+          result.recommendations[numPairs] = {
+            anchorSize: parseFloat(pairMatch[1]),
+            hedgeSize: parseFloat(pairMatch[2]),
+            totalExposure: parseFloat(pairMatch[3]),
+            status: pairMatch[4].trim(),
+            safe: pairMatch[4].includes('SAFE')
+          };
+        }
+      }
+      
+      // Parse current configuration
+      const activePairsMatch = stdout.match(/Active Pairs: ([^]*?)\n/);
+      const numPairsMatch = stdout.match(/Number of Pairs: (\d+)/);
+      const scalingFactorMatch = stdout.match(/Scaling Factor: ([0-9.]+)/);
+      const totalExposureMatch = stdout.match(/Total Exposure: ([0-9.]+)%/);
+      const safetyStatusMatch = stdout.match(/Safety Status: ([^]*?)\n/);
+      const recommendationMatch = stdout.match(/Recommendation: ([^]*?)\n/);
+      
+      if (activePairsMatch || numPairsMatch) {
+        result.currentConfiguration = {
+          activePairs: activePairsMatch && activePairsMatch[1] ? activePairsMatch[1].split(', ').map(p => p.trim()) : [],
+          numPairs: numPairsMatch && numPairsMatch[1] ? parseInt(numPairsMatch[1]) : 0,
+          scalingFactor: scalingFactorMatch && scalingFactorMatch[1] ? parseFloat(scalingFactorMatch[1]) : 0,
+          totalExposure: totalExposureMatch && totalExposureMatch[1] ? parseFloat(totalExposureMatch[1]) : 0,
+          safetyStatus: safetyStatusMatch && safetyStatusMatch[1] ? safetyStatusMatch[1].trim() : '',
+          recommendation: recommendationMatch && recommendationMatch[1] ? recommendationMatch[1].trim() : '',
+          safe: safetyStatusMatch && safetyStatusMatch[1] ? safetyStatusMatch[1].includes('SAFE') : false
+        };
+      }
+      
+      // Parse safety guidelines
+      const guidelinesMatch = stdout.match(/Safety Guidelines:[^]*?(?=Sizing recommendations displayed successfully|$)/s);
+      if (guidelinesMatch) {
+        const lines = guidelinesMatch[0].split('\n');
+        lines.forEach(line => {
+          const match = line.match(/• ([^]*?)$/);
+          if (match && match[1]) {
+            result.safetyGuidelines.push(match[1].trim());
+          }
+        });
+      }
+      
+      return res.json(result);
+    });
+  } catch (error) {
+    logger.error('Error in sizing-recommendations endpoint', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/scripts/price-analysis', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    
+    const scriptPath = path.join(__dirname, '../scripts/analyze-current-price.js');
+    
+    return exec(`node "${scriptPath}"`, { timeout: 30000 }, (error: any, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error('Error executing price-analysis script', error);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to execute price analysis script',
+          details: error.message 
+        });
+      }
+      
+      if (stderr) {
+        logger.warn('Script stderr', stderr);
+      }
+      
+      // Parse the price analysis output
+      const result: any = {
+        success: true,
+        timestamp: new Date().toISOString(),
+        currentPrice: null as number | null,
+        currentZone: null as string | null,
+        tradingSignals: {
+          longEntry: null as any,
+          shortEntry: null as any,
+          nearestResistance: null as any,
+          nearestSupport: null as any
+        },
+        nearbyLevels: [] as any[],
+        positionScenarios: {
+          longPosition: null as any,
+          shortPosition: null as any,
+          noPosition: null as any
+        },
+        marketAnalysis: {} as any,
+        rawOutput: stdout
+      };
+      
+      // Parse current price
+      const currentPriceMatch = stdout.match(/CURRENT ADA PRICE: \$([0-9.]+)/);
+      if (currentPriceMatch && currentPriceMatch[1]) {
+        result.currentPrice = parseFloat(currentPriceMatch[1]);
+      }
+      
+      // Parse current zone
+      const currentZoneMatch = stdout.match(/CURRENT ZONE: ([A-Z\s]+)/);
+      if (currentZoneMatch && currentZoneMatch[1]) {
+        result.currentZone = currentZoneMatch[1].trim();
+      }
+      
+      // Parse trading signals (similar to comprehensive levels)
+      const longEntryMatch = stdout.match(/LONG Entry Signal:[^]*?Price: \$([0-9.]+) \(([0-9.]+)% above current\)[^]*?Description: ([^]*?)\n[^]*?Importance: ([^]*?)\n[^]*?Zone: ([^]*?)\n/s);
+      if (longEntryMatch && longEntryMatch[1] && longEntryMatch[2] && longEntryMatch[3] && longEntryMatch[4] && longEntryMatch[5]) {
+        result.tradingSignals.longEntry = {
+          price: parseFloat(longEntryMatch[1]),
+          distance: parseFloat(longEntryMatch[2]),
+          description: longEntryMatch[3].trim(),
+          importance: longEntryMatch[4].trim(),
+          zone: longEntryMatch[5].trim()
+        };
+      }
+      
+      const shortEntryMatch = stdout.match(/SHORT Entry Signal:[^]*?Price: \$([0-9.]+) \(([0-9.]+)% below current\)[^]*?Description: ([^]*?)\n[^]*?Importance: ([^]*?)\n[^]*?Zone: ([^]*?)\n/s);
+      if (shortEntryMatch && shortEntryMatch[1] && shortEntryMatch[2] && shortEntryMatch[3] && shortEntryMatch[4] && shortEntryMatch[5]) {
+        result.tradingSignals.shortEntry = {
+          price: parseFloat(shortEntryMatch[1]),
+          distance: parseFloat(shortEntryMatch[2]),
+          description: shortEntryMatch[3].trim(),
+          importance: shortEntryMatch[4].trim(),
+          zone: shortEntryMatch[5].trim()
+        };
+      }
+      
+      // Parse nearby levels
+      const nearbyLevelsMatch = stdout.match(/NEARBY LEVELS \(within 1%\):[^]*?(?=POSITION SCENARIOS:|$)/s);
+      if (nearbyLevelsMatch) {
+        const lines = nearbyLevelsMatch[0].split('\n');
+        lines.forEach(line => {
+          const match = line.match(/\$([0-9.]+) \(([0-9.]+)% (above|below)\) - ([^]*?) \[([^\]]+)\]/);
+          if (match && match[1] && match[2] && match[3] && match[4] && match[5]) {
+            result.nearbyLevels.push({
+              price: parseFloat(match[1]),
+              distance: parseFloat(match[2]),
+              direction: match[3],
+              description: match[4].trim(),
+              importance: match[5].trim()
+            });
+          }
+        });
+      }
+      
+      // Parse position scenarios
+      const longPositionMatch = stdout.match(/IF BOT HAS LONG POSITION:[^]*?(?=IF BOT HAS SHORT POSITION:|$)/s);
+      if (longPositionMatch) {
+        const lines = longPositionMatch[0].split('\n');
+        result.positionScenarios.longPosition = {
+          entry: lines.find(l => l.includes('Entry around:'))?.trim() || '',
+          profit: lines.find(l => l.includes('Current profit:'))?.trim() || '',
+          status: lines.find(l => l.includes('Status:'))?.trim() || '',
+          actions: lines.filter(l => l.includes('Action:') || l.includes('-')).map(l => l.trim()).filter(l => l)
+        };
+      }
+      
+      const shortPositionMatch = stdout.match(/IF BOT HAS SHORT POSITION:[^]*?(?=IF BOT HAS NO POSITIONS:|$)/s);
+      if (shortPositionMatch) {
+        const lines = shortPositionMatch[0].split('\n');
+        result.positionScenarios.shortPosition = {
+          entry: lines.find(l => l.includes('Entry around:'))?.trim() || '',
+          loss: lines.find(l => l.includes('Current loss:'))?.trim() || '',
+          status: lines.find(l => l.includes('Status:'))?.trim() || '',
+          actions: lines.filter(l => l.includes('Action:') || l.includes('-')).map(l => l.trim()).filter(l => l)
+        };
+      }
+      
+      const noPositionMatch = stdout.match(/IF BOT HAS NO POSITIONS:[^]*?(?=MARKET ANALYSIS:|$)/s);
+      if (noPositionMatch) {
+        const lines = noPositionMatch[0].split('\n');
+        result.positionScenarios.noPosition = {
+          status: lines.find(l => l.includes('Status:'))?.trim() || '',
+          actions: lines.filter(l => l.includes('Action:') || l.includes('-')).map(l => l.trim()).filter(l => l)
+        };
+      }
+      
+      // Parse market analysis
+      const marketAnalysisMatch = stdout.match(/MARKET ANALYSIS:[^]*?(?=Analysis complete!|$)/s);
+      if (marketAnalysisMatch) {
+        const lines = marketAnalysisMatch[0].split('\n');
+        lines.forEach(line => {
+          if (line.includes('Current Price:')) {
+            const match = line.match(/Current Price: \$([0-9.]+)/);
+            if (match && match[1]) result.marketAnalysis.currentPrice = parseFloat(match[1]);
+          }
+          if (line.includes('Zone:')) {
+            result.marketAnalysis.zone = line.split('Zone:')[1]?.trim() || '';
+          }
+          if (line.includes('Trend:')) {
+            result.marketAnalysis.trend = line.split('Trend:')[1]?.trim() || '';
+          }
+          if (line.includes('Action:')) {
+            result.marketAnalysis.action = line.split('Action:')[1]?.trim() || '';
+          }
+        });
+      }
+      
+      return res.json(result);
+    });
+  } catch (error) {
+    logger.error('Error in price-analysis endpoint', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Configuration API Endpoints
 app.post('/api/config/save', async (req, res) => {
   try {

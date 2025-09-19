@@ -128,46 +128,108 @@ export class HedgeStrategy {
       }
     }
 
-    // Check for resistance breakout (LONG anchor)
+    // Check for resistance breakout (LONG anchor) with enhanced validation
     if (this.isResistanceBreakout(currentPrice, indicators4h, indicators1h)) {
-      const signal = {
-        type: 'ENTRY' as const,
-        position: 'LONG' as const,
-        price: currentPrice,
-        confidence: this.calculateConfidence(indicators4h, indicators1h),
-        reason: 'Resistance breakout with volume confirmation',
-        timestamp: new Date()
-      };
+      // ENHANCED VALIDATION: Check all conditions before creating signal
+      const volumeValid = indicators1h.volumeRatio > 1.0; // Require above average volume
+      const rsiValid = indicators1h.rsi < 30; // Require oversold for LONG entries
+      const vwapValid = (indicators1h.vwapDistance || 0) < 0; // Price should be below VWAP
+      
+      logger.info('🔍 Enhanced LONG Anchor Entry Validation', {
+        currentPrice: currentPrice.toFixed(4),
+        volumeValid,
+        volumeRatio: indicators1h.volumeRatio?.toFixed(2) || 'N/A',
+        rsiValid,
+        rsi: indicators1h.rsi?.toFixed(1) || 'N/A',
+        vwapValid,
+        vwapDistance: (indicators1h.vwapDistance || 0).toFixed(2) + '%',
+        resistanceBreakout: true
+      });
+      
+      // Only create signal if all validation criteria are met
+      if (volumeValid && rsiValid && vwapValid) {
+        const signal = {
+          type: 'ENTRY' as const,
+          position: 'LONG' as const,
+          price: currentPrice,
+          confidence: this.calculateConfidence(indicators4h, indicators1h),
+          reason: 'Resistance breakout with enhanced validation (volume + RSI + VWAP)',
+          timestamp: new Date()
+        };
 
-      // Apply AI filtering
-      if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
-        return signal;
+        // Apply AI filtering
+        if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
+          logger.info('✅ LONG Anchor Entry Signal Approved', {
+            price: currentPrice.toFixed(4),
+            confidence: signal.confidence,
+            reason: 'All validation criteria met'
+          });
+          return signal;
+        } else {
+          logger.info('🤖 AI filtered out LONG entry signal', { 
+            originalConfidence: signal.confidence,
+            aiReason: this.getAIFilterReason(signal, aiAnalysis)
+          });
+        }
       } else {
-        logger.info('🤖 AI filtered out LONG entry signal', { 
-          originalConfidence: signal.confidence,
-          aiReason: this.getAIFilterReason(signal, aiAnalysis)
+        logger.warn('❌ LONG Anchor Entry Blocked', {
+          reason: 'Validation failed',
+          volumeValid,
+          rsiValid,
+          vwapValid
         });
       }
     }
 
-    // Check for support breakdown (SHORT anchor)
+    // Check for support breakdown (SHORT anchor) with enhanced validation
     if (this.isSupportBreakdown(currentPrice, indicators4h, indicators1h)) {
-      const signal = {
-        type: 'ENTRY' as const,
-        position: 'SHORT' as const,
-        price: currentPrice,
-        confidence: this.calculateConfidence(indicators4h, indicators1h),
-        reason: 'Support breakdown with volume confirmation',
-        timestamp: new Date()
-      };
+      // ENHANCED VALIDATION: Check all conditions before creating signal
+      const volumeValid = indicators1h.volumeRatio > 1.0; // Require above average volume
+      const rsiValid = indicators1h.rsi > 70; // Require overbought for SHORT entries
+      const vwapValid = (indicators1h.vwapDistance || 0) > 0; // Price should be above VWAP
+      
+      logger.info('🔍 Enhanced SHORT Anchor Entry Validation', {
+        currentPrice: currentPrice.toFixed(4),
+        volumeValid,
+        volumeRatio: indicators1h.volumeRatio?.toFixed(2) || 'N/A',
+        rsiValid,
+        rsi: indicators1h.rsi?.toFixed(1) || 'N/A',
+        vwapValid,
+        vwapDistance: (indicators1h.vwapDistance || 0).toFixed(2) + '%',
+        supportBreakdown: true
+      });
+      
+      // Only create signal if all validation criteria are met
+      if (volumeValid && rsiValid && vwapValid) {
+        const signal = {
+          type: 'ENTRY' as const,
+          position: 'SHORT' as const,
+          price: currentPrice,
+          confidence: this.calculateConfidence(indicators4h, indicators1h),
+          reason: 'Support breakdown with enhanced validation (volume + RSI + VWAP)',
+          timestamp: new Date()
+        };
 
-      // Apply AI filtering
-      if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
-        return signal;
+        // Apply AI filtering
+        if (this.shouldExecuteSignalWithAI(signal, aiAnalysis)) {
+          logger.info('✅ SHORT Anchor Entry Signal Approved', {
+            price: currentPrice.toFixed(4),
+            confidence: signal.confidence,
+            reason: 'All validation criteria met'
+          });
+          return signal;
+        } else {
+          logger.info('🤖 AI filtered out SHORT entry signal', { 
+            originalConfidence: signal.confidence,
+            aiReason: this.getAIFilterReason(signal, aiAnalysis)
+          });
+        }
       } else {
-        logger.info('🤖 AI filtered out SHORT entry signal', { 
-          originalConfidence: signal.confidence,
-          aiReason: this.getAIFilterReason(signal, aiAnalysis)
+        logger.warn('❌ SHORT Anchor Entry Blocked', {
+          reason: 'Validation failed',
+          volumeValid,
+          rsiValid,
+          vwapValid
         });
       }
     }

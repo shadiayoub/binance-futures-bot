@@ -101,10 +101,68 @@ export class PositionManager {
   }
 
   /**
+   * Validate signal before opening position
+   */
+  private async validateSignal(signal: TradingSignal): Promise<boolean> {
+    try {
+      // Get current market data for validation
+      const currentPrice = await this.binanceService.getCurrentPrice();
+      const marketData1h = await this.binanceService.getKlines('1h', 24); // Get recent 1h data
+      
+      if (marketData1h.length === 0) {
+        logger.warn('❌ Signal validation failed: No market data available');
+        return false;
+      }
+      
+      const lastMarketData = marketData1h[marketData1h.length - 1];
+      const volumeRatio = lastMarketData.volume / (marketData1h.reduce((sum, data) => sum + data.volume, 0) / marketData1h.length);
+      
+      // Enhanced validation checks
+      const priceValid = Math.abs(currentPrice - signal.price) / signal.price < 0.01; // Within 1%
+      const volumeValid = volumeRatio > 1.0; // Above average volume
+      
+      logger.info('🔍 Pre-Entry Signal Validation', {
+        signalType: signal.type,
+        signalPosition: signal.position,
+        signalPrice: signal.price.toFixed(4),
+        currentPrice: currentPrice.toFixed(4),
+        priceValid,
+        volumeValid,
+        volumeRatio: volumeRatio.toFixed(2),
+        reason: signal.reason
+      });
+      
+      if (!priceValid || !volumeValid) {
+        logger.warn('❌ Signal validation failed', {
+          priceValid,
+          volumeValid,
+          reason: 'Price or volume validation failed'
+        });
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Error validating signal', error);
+      return false;
+    }
+  }
+
+  /**
    * Open anchor position (initial long position)
    */
   private async openAnchorPosition(signal: TradingSignal): Promise<Position | null> {
     try {
+      // ENHANCED VALIDATION: Validate signal before opening position
+      const isValidSignal = await this.validateSignal(signal);
+      if (!isValidSignal) {
+        logger.warn('❌ Cannot open ANCHOR position - signal validation failed', {
+          signal: signal,
+          reason: 'Pre-entry validation failed'
+        });
+        return null;
+      }
+      
       // Check cross-pair primary position limit first
       const pair = this.binanceService.getConfig().tradingPair;
       if (!this.multiPairSizingService.canOpenPrimaryPosition(pair, 'ANCHOR')) {

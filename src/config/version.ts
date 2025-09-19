@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '1.1.0';
+export const BOT_VERSION = '1.2.0';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,
@@ -63,7 +63,14 @@ export const VERSION_INFO = {
     'Batch AI Analysis (4 calls reduced to 1)',
     'Circuit Breaker Pattern for API Protection',
     'Optimized Analysis Intervals (15-minute heavy analysis)',
-    'Standalone Operation Mode (No UI Dependencies)'
+    'Standalone Operation Mode (No UI Dependencies)',
+    'CRITICAL: Fixed Signal Generation Logic (Support/Resistance Classification)',
+    'Enhanced Entry Validation with Volume Confirmation',
+    'RSI Oversold/Overbought Requirements for Entries',
+    'VWAP Confirmation for Entry Direction Validation',
+    'Pre-Entry Signal Validation System',
+    'Fixed Level Classification Issues (Resistance vs Support)',
+    'Comprehensive Entry Safety Checks'
   ],
   strategies: [
     'Anchor Strategy (Bidirectional)',
@@ -73,7 +80,9 @@ export const VERSION_INFO = {
     'Intelligent Market Regime Adaptation',
     'AI-Powered Risk Management',
     'Frequent Trading Strategy (1% Profit Targets)',
-    'Position Size-Based Profit Calculation'
+    'Position Size-Based Profit Calculation',
+    'Enhanced Entry Validation Strategy',
+    'Multi-Criteria Entry Confirmation System'
   ],
   safety: [
     'Mathematical Profit Guarantee',
@@ -83,7 +92,12 @@ export const VERSION_INFO = {
     'AI-Powered Risk Assessment',
     'Intelligent Signal Filtering',
     'AI Fallback Mechanisms',
-    'Advanced Error Handling with AI Context'
+    'Advanced Error Handling with AI Context',
+    'CRITICAL: Entry Validation Safety System',
+    'Volume Confirmation Requirements',
+    'RSI-Based Entry Safety Checks',
+    'VWAP-Based Entry Direction Validation',
+    'Pre-Entry Signal Validation'
   ]
 };
 

@@ -231,12 +231,53 @@ export class ComprehensiveLevels {
       const criticalLevels = currentZone.levels.filter(l => l.importance === 'CRITICAL');
       const highLevels = currentZone.levels.filter(l => l.importance === 'HIGH');
 
-      // For LONG entries: also check next zone up if price is near top of current zone
+      // For LONG entries: look for SUPPORT levels BELOW current price
+      let supportCandidates = [...criticalLevels, ...highLevels]
+        .filter(l => l.type === 'SUPPORT' && l.price < currentPrice);
+      
+      // Debug logging for current zone
+      logger.info('🔍 Current zone support search for LONG entries', {
+        currentPrice: currentPrice.toFixed(4),
+        currentZone: currentZone.name,
+        criticalLevels: criticalLevels.length,
+        highLevels: highLevels.length,
+        supportCandidates: supportCandidates.length,
+        candidates: supportCandidates.map(s => ({ price: s.price.toFixed(4), description: s.description }))
+      });
+      
+      // If no support found in current zone, check next zone down
+      if (supportCandidates.length === 0) {
+        const currentZoneIndex = this.zones.findIndex(z => z.name === currentZone.name);
+        if (currentZoneIndex < this.zones.length - 1) { // Not the lowest zone
+          const nextZone = this.zones[currentZoneIndex + 1]; // Lower price zone
+          if (nextZone) {
+            const nextZoneCritical = nextZone.levels.filter(l => l.importance === 'CRITICAL');
+            const nextZoneHigh = nextZone.levels.filter(l => l.importance === 'HIGH');
+            supportCandidates = [...nextZoneCritical, ...nextZoneHigh]
+              .filter(l => l.type === 'SUPPORT' && l.price < currentPrice);
+            
+            // Debug logging
+            logger.info('🔍 Cross-zone support search for LONG entries', {
+              currentPrice: currentPrice.toFixed(4),
+              currentZone: currentZone.name,
+              nextZone: nextZone.name,
+              nextZoneLevels: nextZone.levels.length,
+              supportCandidates: supportCandidates.length,
+              candidates: supportCandidates.map(s => ({ price: s.price.toFixed(4), description: s.description }))
+            });
+          }
+        }
+      }
+      
+      supportCandidates.sort((a, b) => b.price - a.price); // Sort descending to get closest support below price
+      longEntry = supportCandidates.length > 0 ? (supportCandidates[0] || null) : null;
+
+      // For SHORT entries: look for RESISTANCE levels ABOVE current price
       let resistanceCandidates = [...criticalLevels, ...highLevels]
         .filter(l => l.type === 'RESISTANCE' && l.price > currentPrice);
       
       // Debug logging for current zone
-      logger.info('🔍 Current zone resistance search', {
+      logger.info('🔍 Current zone resistance search for SHORT entries', {
         currentPrice: currentPrice.toFixed(4),
         currentZone: currentZone.name,
         criticalLevels: criticalLevels.length,
@@ -257,7 +298,7 @@ export class ComprehensiveLevels {
               .filter(l => l.type === 'RESISTANCE' && l.price > currentPrice);
             
             // Debug logging
-            logger.info('🔍 Cross-zone resistance search', {
+            logger.info('🔍 Cross-zone resistance search for SHORT entries', {
               currentPrice: currentPrice.toFixed(4),
               currentZone: currentZone.name,
               nextZone: nextZone.name,
@@ -269,29 +310,8 @@ export class ComprehensiveLevels {
         }
       }
       
-      resistanceCandidates.sort((a, b) => a.price - b.price);
-      longEntry = resistanceCandidates.length > 0 ? (resistanceCandidates[0] || null) : null;
-
-      // For SHORT entries: also check next zone down if price is near bottom of current zone
-      let supportCandidates = [...criticalLevels, ...highLevels]
-        .filter(l => l.type === 'SUPPORT' && l.price < currentPrice);
-      
-      // If no support found in current zone, check next zone down
-      if (supportCandidates.length === 0) {
-        const currentZoneIndex = this.zones.findIndex(z => z.name === currentZone.name);
-        if (currentZoneIndex < this.zones.length - 1) { // Not the lowest zone
-          const nextZone = this.zones[currentZoneIndex + 1]; // Lower price zone
-          if (nextZone) {
-            const nextZoneCritical = nextZone.levels.filter(l => l.importance === 'CRITICAL');
-            const nextZoneHigh = nextZone.levels.filter(l => l.importance === 'HIGH');
-            supportCandidates = [...nextZoneCritical, ...nextZoneHigh]
-              .filter(l => l.type === 'SUPPORT' && l.price < currentPrice);
-          }
-        }
-      }
-      
-      supportCandidates.sort((a, b) => b.price - a.price);
-      shortEntry = supportCandidates.length > 0 ? (supportCandidates[0] || null) : null;
+      resistanceCandidates.sort((a, b) => a.price - b.price); // Sort ascending to get closest resistance above price
+      shortEntry = resistanceCandidates.length > 0 ? (resistanceCandidates[0] || null) : null;
     }
 
     return {

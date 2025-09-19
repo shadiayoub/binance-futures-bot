@@ -127,7 +127,7 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
   }
 
   /**
-   * Validate scalp entry conditions (BIDIRECTIONAL!)
+   * Validate scalp entry conditions with enhanced safety checks
    */
   private isValidScalpEntry(
     levelData: any, 
@@ -143,20 +143,54 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
       currentPrice >= levelData.price : 
       currentPrice <= levelData.price;
     
-    // Check volume confirmation (use 15m for faster response)
-    const hasVolumeConfirmation = this.technicalAnalysis.isVolumeAboveThreshold(indicators15m.volumeRatio);
+    // ENHANCED VALIDATION: Check volume confirmation (require above average volume)
+    const hasVolumeConfirmation = indicators15m.volumeRatio > 1.0; // Require above average volume
     
-    // Check RSI is in valid range (use 15m for faster response)
-    const rsiValid = this.technicalAnalysis.isRSIInValidRange(indicators15m.rsi);
+    // ENHANCED VALIDATION: Check RSI is in proper range for direction
+    let rsiValid = false;
+    if (direction === 'LONG') {
+      rsiValid = indicators15m.rsi < 30; // Require oversold for LONG entries
+    } else {
+      rsiValid = indicators15m.rsi > 70; // Require overbought for SHORT entries
+    }
+    
+    // ENHANCED VALIDATION: Check VWAP confirmation
+    const vwapDistance = indicators15m.vwapDistance || 0;
+    let vwapValid = false;
+    if (direction === 'LONG') {
+      vwapValid = vwapDistance < 0; // Price should be below VWAP for LONG entries
+    } else {
+      vwapValid = vwapDistance > 0; // Price should be above VWAP for SHORT entries
+    }
+    
+    // Log validation details
+    logger.info(`🔍 Enhanced ${direction} Scalp Entry Validation`, {
+      currentPrice: currentPrice.toFixed(4),
+      levelPrice: levelData.price.toFixed(4),
+      levelDescription: levelData.description,
+      levelImportance: levelData.importance,
+      isNearLevel,
+      isAtLevel,
+      hasVolumeConfirmation,
+      volumeRatio: indicators15m.volumeRatio?.toFixed(2) || 'N/A',
+      rsiValid,
+      rsi: indicators15m.rsi?.toFixed(1) || 'N/A',
+      vwapValid,
+      vwapDistance: vwapDistance.toFixed(2) + '%',
+      priceTolerance: (priceTolerance * 100).toFixed(1) + '%'
+    });
     
     // Check trend alignment (allow all trends for hedged strategy)
     const trendAligned = true; // Allow all trends since we're hedged - we profit either way
 
+    // ENHANCED VALIDATION: All conditions must be met
+    const isValid = isNearLevel && hasVolumeConfirmation && rsiValid && vwapValid && trendAligned;
+    
     // Debug logging for volume analysis
     logger.info(`🔍 Volume Analysis for 15m ${direction} Scalp Entry`, {
       currentPrice: currentPrice.toFixed(4),
       levelPrice: levelData.price.toFixed(4),
-      levelType: direction === 'LONG' ? 'Support' : 'Resistance',
+      levelType: levelData.type, // Use actual level type from levelData
       levelDescription: levelData.description,
       levelImportance: levelData.importance,
       volumeRatio: indicators15m.volumeRatio.toFixed(2),
@@ -169,7 +203,18 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
       priceTolerance: `${(priceTolerance * 100).toFixed(2)}%`
     });
 
-    return isNearLevel && hasVolumeConfirmation && rsiValid && trendAligned;
+    // Return enhanced validation result
+    logger.info(`🎯 ${direction} Scalp Entry Validation Result`, {
+      isValid,
+      isNearLevel,
+      hasVolumeConfirmation,
+      rsiValid,
+      vwapValid,
+      trendAligned,
+      reason: isValid ? 'All validation criteria met' : 'Validation failed - entry blocked'
+    });
+    
+    return isValid;
   }
 
   /**
@@ -182,7 +227,7 @@ async executeScalpStrategy(marketData4h: MarketData[], marketData1h: MarketData[
     indicators4h: TechnicalIndicators,
     indicators15m: TechnicalIndicators
   ): TradingSignal {
-    const levelType = direction === 'LONG' ? 'Support' : 'Resistance';
+    const levelType = levelData.type; // Use actual level type from levelData
     
     logger.info(`🎯 15m ${direction} Scalp Entry Signal`, {
       currentPrice: currentPrice.toFixed(4),
