@@ -70,17 +70,22 @@ export const VERSION_INFO = {
     'VWAP Confirmation for Entry Direction Validation',
     'Pre-Entry Signal Validation System',
     'Fixed Level Classification Issues (Resistance vs Support)',
-    'Comprehensive Entry Safety Checks'
+    'Comprehensive Entry Safety Checks',
+    'High-Frequency Trading Strategy (0.6% Profit Targets)',
+    'Advanced Technical Indicators (Stochastic RSI, Bollinger Bands, ATR, MFI, MACD, Awesome Oscillator, TRIX, PSAR)',
+    'Configurable Max Position Size',
+    'Strategy Isolation (Hedge, Opportunity, Scalp Disabled)',
+    'Pure High-Frequency Mode'
   ],
   strategies: [
-    'Anchor Strategy (Bidirectional)',
-    'Peak Strategy (Market Reversal Detection)',
-    'Scalp Strategy (High-Frequency Trading)',
+    'High-Frequency Strategy (0.6% Profit Targets)',
+    'Advanced Technical Analysis (8 Indicators)',
+    'Dynamic Position Sizing',
+    'Signal Strength Analysis',
+    'ATR-Based Risk Management',
     'AI-Enhanced Signal Generation',
     'Intelligent Market Regime Adaptation',
     'AI-Powered Risk Management',
-    'Frequent Trading Strategy (1% Profit Targets)',
-    'Position Size-Based Profit Calculation',
     'Enhanced Entry Validation Strategy',
     'Multi-Criteria Entry Confirmation System'
   ],

@@ -18,6 +18,7 @@ export interface PositionSizing {
   opportunityHedgeSize: number;
   scalpPositionSize: number;
   scalpHedgeSize: number;
+  maxPositionSize: number; // Maximum position size as percentage of balance
 }
 
 export interface LeverageSettings {
@@ -35,6 +36,40 @@ export interface TechnicalConfig {
   emaSlow: number;
   volumePeriod: number;
   volumeMultiplier: number;
+  
+  // High-Frequency Trading Configuration
+  stochasticRSI: {
+    rsiPeriod: number;
+    stochasticPeriod: number;
+    kPeriod: number;
+    dPeriod: number;
+  };
+  bollingerBands: {
+    period: number;
+    stdDev: number;
+  };
+  atr: {
+    period: number;
+  };
+  mfi: {
+    period: number;
+  };
+  macd: {
+    fastPeriod: number;
+    slowPeriod: number;
+    signalPeriod: number;
+  };
+  awesomeOscillator: {
+    fastPeriod: number;
+    slowPeriod: number;
+  };
+  trix: {
+    period: number;
+  };
+  psar: {
+    step: number;
+    maximum: number;
+  };
 }
 
 export interface SupportResistanceLevels {
@@ -82,6 +117,34 @@ export interface TechnicalIndicators {
   trend: 'BULLISH' | 'BEARISH' | 'SIDEWAYS';
   vwap: number;
   vwapDistance: number; // Distance from VWAP as percentage
+  
+  // High-Frequency Trading Indicators (0.6% profit targets)
+  stochasticRSI: {
+    k: number; // %K value
+    d: number; // %D value
+    isOversold: boolean;
+    isOverbought: boolean;
+  };
+  bollingerBands: {
+    upper: number;
+    middle: number;
+    lower: number;
+    bandwidth: number; // Volatility measure
+    isUpperTouch: boolean;
+    isLowerTouch: boolean;
+  };
+  atr: number; // Average True Range
+  mfi: number; // Money Flow Index
+  macd: {
+    macd: number;
+    signal: number;
+    histogram: number;
+    isBullish: boolean;
+    isBearish: boolean;
+  };
+  awesomeOscillator: number;
+  trix: number;
+  psar: number; // Parabolic SAR
 }
 
 export interface TradingSignal {

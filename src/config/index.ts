@@ -33,6 +33,7 @@ export const positionSizing: PositionSizing = {
   opportunityHedgeSize: parseFloat(process.env.OPPORTUNITY_HEDGE_SIZE || '0.30'),
   scalpPositionSize: parseFloat(process.env.SCALP_POSITION_SIZE || '0.10'),
   scalpHedgeSize: parseFloat(process.env.SCALP_HEDGE_SIZE || '0.10'),
+  maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.20'), // 20% max position size
 };
 
 export const leverageSettings: LeverageSettings = {
@@ -50,6 +51,40 @@ export const technicalConfig: TechnicalConfig = {
   emaSlow: parseInt(process.env.EMA_SLOW || '18'),
   volumePeriod: parseInt(process.env.VOLUME_PERIOD || '20'),
   volumeMultiplier: parseFloat(process.env.VOLUME_MULTIPLIER || '0.1'), // Set to 0.1 to allow trading in very low-volume markets
+  
+  // High-Frequency Trading Configuration (0.6% profit targets)
+  stochasticRSI: {
+    rsiPeriod: parseInt(process.env.STOCH_RSI_PERIOD || '14'),
+    stochasticPeriod: parseInt(process.env.STOCH_PERIOD || '14'),
+    kPeriod: parseInt(process.env.STOCH_K_PERIOD || '3'),
+    dPeriod: parseInt(process.env.STOCH_D_PERIOD || '3')
+  },
+  bollingerBands: {
+    period: parseInt(process.env.BB_PERIOD || '20'),
+    stdDev: parseFloat(process.env.BB_STDDEV || '2')
+  },
+  atr: {
+    period: parseInt(process.env.ATR_PERIOD || '14')
+  },
+  mfi: {
+    period: parseInt(process.env.MFI_PERIOD || '14')
+  },
+  macd: {
+    fastPeriod: parseInt(process.env.MACD_FAST || '12'),
+    slowPeriod: parseInt(process.env.MACD_SLOW || '26'),
+    signalPeriod: parseInt(process.env.MACD_SIGNAL || '9')
+  },
+  awesomeOscillator: {
+    fastPeriod: parseInt(process.env.AO_FAST || '5'),
+    slowPeriod: parseInt(process.env.AO_SLOW || '34')
+  },
+  trix: {
+    period: parseInt(process.env.TRIX_PERIOD || '14')
+  },
+  psar: {
+    step: parseFloat(process.env.PSAR_STEP || '0.02'),
+    maximum: parseFloat(process.env.PSAR_MAX || '0.2')
+  }
 };
 
 export const supportResistanceLevels: SupportResistanceLevels = {

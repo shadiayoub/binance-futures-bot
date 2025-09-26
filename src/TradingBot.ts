@@ -15,6 +15,7 @@ import { TechnicalAnalysis } from './services/TechnicalAnalysis';
 import { PositionManager } from './services/PositionManager';
 import { HedgeStrategy } from './strategies/HedgeStrategy';
 import { ScalpStrategy } from './strategies/ScalpStrategy';
+import { HighFrequencyStrategy } from './strategies/HighFrequencyStrategy';
 import { AIService } from './services/AIService';
 import { logger } from './utils/logger';
 import { BOT_VERSION, VERSION_INFO } from './config/version';
@@ -27,6 +28,7 @@ export class TradingBot {
   private positionManager: PositionManager;
   private hedgeStrategy: HedgeStrategy;
   private scalpStrategy: ScalpStrategy;
+  private highFrequencyStrategy: HighFrequencyStrategy;
   private aiService: AIService;
   private config: TradingConfig;
   private aiConfig: AIConfig;
@@ -65,6 +67,15 @@ export class TradingBot {
       this.positionManager,
       this.aiService
     );
+    this.highFrequencyStrategy = new HighFrequencyStrategy(
+      this.binanceService,
+      this.technicalAnalysis,
+      supportResistanceLevels,
+      positionSizing,
+      leverageSettings,
+      this.positionManager.getDynamicLevels(),
+      this.aiService
+    );
 
     // Bot registration removed to avoid circular dependency with WebSocketService
   }
@@ -82,8 +93,11 @@ export class TradingBot {
       // Update positions from Binance
       await this.positionManager.updatePositions();
       
-      // Update strategy with current positions
-      this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      // DISABLED: Update strategy with current positions
+      // this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      
+      // Update high-frequency strategy with current positions (ONLY ACTIVE STRATEGY)
+      this.highFrequencyStrategy.updatePositions(this.positionManager.getCurrentPositions());
       
       logger.info('Trading bot initialized successfully');
     } catch (error) {
@@ -222,8 +236,11 @@ export class TradingBot {
       // Update positions from Binance
       await this.positionManager.updatePositions();
       
-      // Update strategy with current positions
-      this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      // DISABLED: Update strategy with current positions
+      // this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      
+      // Update high-frequency strategy with current positions (ONLY ACTIVE STRATEGY)
+      this.highFrequencyStrategy.updatePositions(this.positionManager.getCurrentPositions());
       
       // Get market data for all timeframes
       const candles4h = this.config.historical4hDays * 6; // 4H candles per day
@@ -282,14 +299,20 @@ export class TradingBot {
         logger.warn('🤖 AI analysis failed, using technical analysis only');
       }
       
-      // Execute hedge strategy with AI insights
-      const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h, aiAnalysis);
+      // DISABLED: Execute hedge strategy with AI insights
+      // const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h, aiAnalysis);
+      const hedgeSignals: any[] = []; // Empty array for disabled strategy
       
-      // Execute scalp strategy with 15m data and AI insights
-      const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m, aiAnalysis);
+      // DISABLED: Execute scalp strategy with 15m data and AI insights
+      // const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m, aiAnalysis);
+      const scalpSignals: any[] = []; // Empty array for disabled strategy
       
-      // Enhance signals with AI analysis
-      const enhancedSignals = this.enhanceSignalsWithAI([...hedgeSignals, ...scalpSignals], aiAnalysis);
+      // Execute high-frequency strategy with 15m data and AI insights (ONLY ACTIVE STRATEGY)
+      logger.info('🚀 Running High-Frequency Strategy Only (Hedge, Opportunity & Scalp strategies disabled)');
+      const hfSignals = await this.highFrequencyStrategy.executeStrategy(marketData4h, marketData1h, marketData15m, aiAnalysis);
+      
+      // Enhance signals with AI analysis (only high-frequency signals)
+      const enhancedSignals = this.enhanceSignalsWithAI([...hedgeSignals, ...scalpSignals, ...hfSignals], aiAnalysis);
       
       // Execute signals
       for (const signal of enhancedSignals) {
@@ -322,8 +345,11 @@ export class TradingBot {
       // Update positions from Binance (lightweight)
       await this.positionManager.updatePositions();
       
-      // Update strategy with current positions
-      this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      // DISABLED: Update strategy with current positions
+      // this.hedgeStrategy.updatePositions(this.positionManager.getCurrentPositions());
+      
+      // Update high-frequency strategy with current positions (ONLY ACTIVE STRATEGY)
+      this.highFrequencyStrategy.updatePositions(this.positionManager.getCurrentPositions());
       
       // Get sufficient market data for quick decisions
       const marketData15m = await this.binanceService.getKlines('15m', 96); // 1 day of 15m data
@@ -349,12 +375,18 @@ export class TradingBot {
         return;
       }
       
-      // Execute quick decision strategies with sufficient data
-      const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h);
-      const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m);
+      // DISABLED: Execute quick decision strategies with sufficient data
+      // const hedgeSignals = await this.hedgeStrategy.executeStrategy(marketData4h, marketData1h);
+      // const scalpSignals = await this.scalpStrategy.executeScalpStrategy(marketData4h, marketData1h, marketData15m);
+      const hedgeSignals: any[] = []; // Empty array for disabled strategy
+      const scalpSignals: any[] = []; // Empty array for disabled strategy
       
-      // Combine all signals
-      const allSignals = [...hedgeSignals, ...scalpSignals];
+      // Execute high-frequency strategy only (ONLY ACTIVE STRATEGY)
+      logger.info('🚀 Running High-Frequency Strategy Only (Hedge, Opportunity & Scalp strategies disabled)');
+      const hfSignals = await this.highFrequencyStrategy.executeStrategy(marketData4h, marketData1h, marketData15m);
+      
+      // Combine all signals (only high-frequency signals)
+      const allSignals = [...hedgeSignals, ...scalpSignals, ...hfSignals];
       
       // Execute signals immediately
       for (const signal of allSignals) {

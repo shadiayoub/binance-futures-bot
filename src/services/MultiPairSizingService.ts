@@ -85,7 +85,8 @@ export class MultiPairSizingService {
       opportunityPositionSize: this.BASE_OPPORTUNITY_SIZE * scalingFactor,
       opportunityHedgeSize: this.BASE_HEDGE_SIZE * scalingFactor, // Same as anchor hedge
       scalpPositionSize: this.BASE_SCALP_SIZE * scalingFactor,
-      scalpHedgeSize: this.BASE_SCALP_HEDGE_SIZE * scalingFactor
+      scalpHedgeSize: this.BASE_SCALP_HEDGE_SIZE * scalingFactor,
+      maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.25')
     };
 
     // Use environment variables for leverage settings (don't override)

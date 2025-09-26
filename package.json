@@ -1,6 +1,6 @@
 {
   "name": "ada-futures-bot",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "AI-Enhanced Binance Futures Trading Bot with 4-Position Hedge System and DeepSeek Integration",
   "main": "dist/multi-pair-index.js",
   "scripts": {
@@ -24,6 +24,9 @@
     "show-sizing": "ts-node src/scripts/show-sizing-recommendations.ts",
     "test-cross-pair": "ts-node src/scripts/test-cross-pair-limiting.ts",
     "test-ai": "ts-node src/scripts/test-ai-integration.ts",
+    "test-hf-indicators": "ts-node src/scripts/test-high-frequency-indicators.ts",
+    "test-hf-strategy": "ts-node src/scripts/test-high-frequency-strategy.ts",
+    "test-hf-only": "ts-node src/scripts/test-hf-only-mode.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
   },

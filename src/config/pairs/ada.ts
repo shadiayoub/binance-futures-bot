@@ -22,6 +22,7 @@ export const adaConfig: PairConfig = {
     opportunityHedgeSize: parseFloat(process.env.ADA_OPPORTUNITY_HEDGE_SIZE || process.env.BASE_HEDGE_SIZE || '0.30'),
     scalpPositionSize: parseFloat(process.env.ADA_SCALP_POSITION_SIZE || process.env.BASE_SCALP_SIZE || '0.10'),
     scalpHedgeSize: parseFloat(process.env.ADA_SCALP_HEDGE_SIZE || process.env.BASE_SCALP_HEDGE_SIZE || '0.10'),
+    maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.25'),
   },
   
   // Leverage settings (pair-specific overrides global defaults)
@@ -41,6 +42,40 @@ export const adaConfig: PairConfig = {
     emaSlow: parseInt(process.env.ADA_EMA_SLOW || process.env.EMA_SLOW || '18'),
     volumePeriod: parseInt(process.env.ADA_VOLUME_PERIOD || process.env.VOLUME_PERIOD || '20'),
     volumeMultiplier: parseFloat(process.env.ADA_VOLUME_MULTIPLIER || process.env.VOLUME_MULTIPLIER || '1.2'),
+    
+    // High-Frequency Trading Configuration for ADA (0.6% profit targets)
+    stochasticRSI: {
+      rsiPeriod: parseInt(process.env.ADA_STOCH_RSI_PERIOD || process.env.STOCH_RSI_PERIOD || '14'),
+      stochasticPeriod: parseInt(process.env.ADA_STOCH_PERIOD || process.env.STOCH_PERIOD || '14'),
+      kPeriod: parseInt(process.env.ADA_STOCH_K_PERIOD || process.env.STOCH_K_PERIOD || '3'),
+      dPeriod: parseInt(process.env.ADA_STOCH_D_PERIOD || process.env.STOCH_D_PERIOD || '3')
+    },
+    bollingerBands: {
+      period: parseInt(process.env.ADA_BB_PERIOD || process.env.BB_PERIOD || '20'),
+      stdDev: parseFloat(process.env.ADA_BB_STDDEV || process.env.BB_STDDEV || '2')
+    },
+    atr: {
+      period: parseInt(process.env.ADA_ATR_PERIOD || process.env.ATR_PERIOD || '14')
+    },
+    mfi: {
+      period: parseInt(process.env.ADA_MFI_PERIOD || process.env.MFI_PERIOD || '14')
+    },
+    macd: {
+      fastPeriod: parseInt(process.env.ADA_MACD_FAST || process.env.MACD_FAST || '12'),
+      slowPeriod: parseInt(process.env.ADA_MACD_SLOW || process.env.MACD_SLOW || '26'),
+      signalPeriod: parseInt(process.env.ADA_MACD_SIGNAL || process.env.MACD_SIGNAL || '9')
+    },
+    awesomeOscillator: {
+      fastPeriod: parseInt(process.env.ADA_AO_FAST || process.env.AO_FAST || '5'),
+      slowPeriod: parseInt(process.env.ADA_AO_SLOW || process.env.AO_SLOW || '34')
+    },
+    trix: {
+      period: parseInt(process.env.ADA_TRIX_PERIOD || process.env.TRIX_PERIOD || '14')
+    },
+    psar: {
+      step: parseFloat(process.env.ADA_PSAR_STEP || process.env.PSAR_STEP || '0.02'),
+      maximum: parseFloat(process.env.ADA_PSAR_MAX || process.env.PSAR_MAX || '0.2')
+    }
   },
   
   // Support/Resistance levels

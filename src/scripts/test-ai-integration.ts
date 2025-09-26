@@ -71,7 +71,35 @@ async function testAIIntegration() {
       volumeRatio: 1.25,
       trend: 'BULLISH',
       vwap: 0.86,
-      vwapDistance: 1.16
+      vwapDistance: 1.16,
+      
+      // High-Frequency Trading Indicators
+      stochasticRSI: {
+        k: 75,
+        d: 70,
+        isOversold: false,
+        isOverbought: true
+      },
+      bollingerBands: {
+        upper: 0.88,
+        middle: 0.86,
+        lower: 0.84,
+        bandwidth: 4.65,
+        isUpperTouch: false,
+        isLowerTouch: false
+      },
+      atr: 0.02,
+      mfi: 60,
+      macd: {
+        macd: 0.001,
+        signal: 0.0005,
+        histogram: 0.0005,
+        isBullish: true,
+        isBearish: false
+      },
+      awesomeOscillator: 0.0005,
+      trix: 0.0001,
+      psar: 0.85
     };
 
     const currentPrice = 0.87;
@@ -254,7 +282,35 @@ async function testAIErrorHandling() {
       volumeRatio: 1.0,
       trend: 'SIDEWAYS',
       vwap: 0.85,
-      vwapDistance: 0
+      vwapDistance: 0,
+      
+      // High-Frequency Trading Indicators
+      stochasticRSI: {
+        k: 50,
+        d: 50,
+        isOversold: false,
+        isOverbought: false
+      },
+      bollingerBands: {
+        upper: 0.87,
+        middle: 0.85,
+        lower: 0.83,
+        bandwidth: 4.71,
+        isUpperTouch: false,
+        isLowerTouch: false
+      },
+      atr: 0.02,
+      mfi: 50,
+      macd: {
+        macd: 0,
+        signal: 0,
+        histogram: 0,
+        isBullish: false,
+        isBearish: false
+      },
+      awesomeOscillator: 0,
+      trix: 0,
+      psar: 0.85
     };
 
     // This should handle errors gracefully

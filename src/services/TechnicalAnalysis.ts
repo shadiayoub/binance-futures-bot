@@ -6,7 +6,15 @@ import {
 import { 
   RSI, 
   EMA, 
-  SMA 
+  SMA,
+  StochasticRSI,
+  BollingerBands,
+  ATR,
+  MFI,
+  MACD,
+  AwesomeOscillator,
+  TRIX,
+  PSAR
 } from 'technicalindicators';
 import { logger } from '../utils/logger';
 
@@ -169,6 +177,46 @@ export class TechnicalAnalysis {
     
     const trend = this.determineTrend(emaFast, emaSlow);
 
+    // Calculate high-frequency trading indicators
+    const stochasticRSI = this.calculateStochasticRSI(prices);
+    const bollingerBands = this.calculateBollingerBands(prices);
+    const atr = this.calculateATR(marketData);
+    const mfi = this.calculateMFI(marketData);
+    const macd = this.calculateMACD(prices);
+    const awesomeOscillator = this.calculateAwesomeOscillator(marketData);
+    const trix = this.calculateTRIX(prices);
+    const psar = this.calculatePSAR(marketData);
+
+    // Debug logging for high-frequency indicators
+    logger.info('🔍 High-Frequency Indicators Debug', {
+      stochasticRSI: {
+        k: stochasticRSI.k.toFixed(2),
+        d: stochasticRSI.d.toFixed(2),
+        isOversold: stochasticRSI.isOversold,
+        isOverbought: stochasticRSI.isOverbought
+      },
+      bollingerBands: {
+        upper: bollingerBands.upper.toFixed(4),
+        middle: bollingerBands.middle.toFixed(4),
+        lower: bollingerBands.lower.toFixed(4),
+        bandwidth: bollingerBands.bandwidth.toFixed(2) + '%',
+        isUpperTouch: bollingerBands.isUpperTouch,
+        isLowerTouch: bollingerBands.isLowerTouch
+      },
+      atr: atr.toFixed(4),
+      mfi: mfi.toFixed(2),
+      macd: {
+        macd: macd.macd.toFixed(4),
+        signal: macd.signal.toFixed(4),
+        histogram: macd.histogram.toFixed(4),
+        isBullish: macd.isBullish,
+        isBearish: macd.isBearish
+      },
+      awesomeOscillator: awesomeOscillator.toFixed(4),
+      trix: trix.toFixed(4),
+      psar: psar.toFixed(4)
+    });
+
     return {
       rsi,
       emaFast,
@@ -177,7 +225,17 @@ export class TechnicalAnalysis {
       volumeRatio,
       trend,
       vwap,
-      vwapDistance
+      vwapDistance,
+      
+      // High-Frequency Trading Indicators
+      stochasticRSI,
+      bollingerBands,
+      atr,
+      mfi,
+      macd,
+      awesomeOscillator,
+      trix,
+      psar
     };
   }
 
@@ -283,5 +341,256 @@ export class TechnicalAnalysis {
     }
 
     return { level: nearest, distance: minDistance };
+  }
+
+  // ============================================================================
+  // HIGH-FREQUENCY TRADING INDICATORS (0.6% Profit Targets)
+  // ============================================================================
+
+  /**
+   * Calculate Stochastic RSI - Ultra-sensitive momentum indicator
+   */
+  calculateStochasticRSI(prices: number[]): { k: number; d: number; isOversold: boolean; isOverbought: boolean } {
+    try {
+      const config = this.config.stochasticRSI;
+      const result = StochasticRSI.calculate({
+        values: prices,
+        rsiPeriod: config.rsiPeriod,
+        stochasticPeriod: config.stochasticPeriod,
+        kPeriod: config.kPeriod,
+        dPeriod: config.dPeriod
+      });
+
+      const lastResult = result[result.length - 1];
+      if (!lastResult) {
+        return { k: 50, d: 50, isOversold: false, isOverbought: false };
+      }
+
+      return {
+        k: lastResult.k,
+        d: lastResult.d,
+        isOversold: lastResult.k < 20,
+        isOverbought: lastResult.k > 80
+      };
+    } catch (error) {
+      logger.error('Failed to calculate Stochastic RSI', error);
+      return { k: 50, d: 50, isOversold: false, isOverbought: false };
+    }
+  }
+
+  /**
+   * Calculate Bollinger Bands - Volatility-based entries
+   */
+  calculateBollingerBands(prices: number[]): { upper: number; middle: number; lower: number; bandwidth: number; isUpperTouch: boolean; isLowerTouch: boolean } {
+    try {
+      const config = this.config.bollingerBands;
+      const result = BollingerBands.calculate({
+        values: prices,
+        period: config.period,
+        stdDev: config.stdDev
+      });
+
+      const lastResult = result[result.length - 1];
+      const currentPrice = prices[prices.length - 1];
+      
+      if (!lastResult || !currentPrice) {
+        return { 
+          upper: currentPrice || 0, 
+          middle: currentPrice || 0, 
+          lower: currentPrice || 0, 
+          bandwidth: 0, 
+          isUpperTouch: false, 
+          isLowerTouch: false 
+        };
+      }
+
+      const bandwidth = ((lastResult.upper - lastResult.lower) / lastResult.middle) * 100;
+      const tolerance = 0.002; // 0.2% tolerance for touch detection
+
+      return {
+        upper: lastResult.upper,
+        middle: lastResult.middle,
+        lower: lastResult.lower,
+        bandwidth,
+        isUpperTouch: Math.abs(currentPrice - lastResult.upper) / lastResult.upper <= tolerance,
+        isLowerTouch: Math.abs(currentPrice - lastResult.lower) / lastResult.lower <= tolerance
+      };
+    } catch (error) {
+      logger.error('Failed to calculate Bollinger Bands', error);
+      const currentPrice = prices[prices.length - 1] || 0;
+      return { 
+        upper: currentPrice, 
+        middle: currentPrice, 
+        lower: currentPrice, 
+        bandwidth: 0, 
+        isUpperTouch: false, 
+        isLowerTouch: false 
+      };
+    }
+  }
+
+  /**
+   * Calculate ATR (Average True Range) - Dynamic stop-losses
+   */
+  calculateATR(marketData: MarketData[]): number {
+    try {
+      const config = this.config.atr;
+      
+      // Convert MarketData to OHLC format for ATR
+      const input = marketData.map(data => ({
+        high: data.price * 1.001, // Approximate high from price
+        low: data.price * 0.999,   // Approximate low from price
+        close: data.price
+      }));
+
+      const result = ATR.calculate({
+        high: input.map(c => c.high),
+        low: input.map(c => c.low),
+        close: input.map(c => c.close),
+        period: config.period
+      });
+
+      return result[result.length - 1] || 0;
+    } catch (error) {
+      logger.error('Failed to calculate ATR', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Calculate MFI (Money Flow Index) - Volume-weighted momentum
+   */
+  calculateMFI(marketData: MarketData[]): number {
+    try {
+      const config = this.config.mfi;
+      
+      // Convert MarketData to OHLC format for MFI
+      const input = marketData.map(data => ({
+        high: data.price * 1.001,
+        low: data.price * 0.999,
+        close: data.price,
+        volume: data.volume
+      }));
+
+      const result = MFI.calculate({
+        high: input.map(c => c.high),
+        low: input.map(c => c.low),
+        close: input.map(c => c.close),
+        volume: input.map(c => c.volume),
+        period: config.period
+      });
+
+      return result[result.length - 1] || 50;
+    } catch (error) {
+      logger.error('Failed to calculate MFI', error);
+      return 50;
+    }
+  }
+
+  /**
+   * Calculate MACD - Trend confirmation
+   */
+  calculateMACD(prices: number[]): { macd: number; signal: number; histogram: number; isBullish: boolean; isBearish: boolean } {
+    try {
+      const config = this.config.macd;
+      const result = MACD.calculate({
+        values: prices,
+        fastPeriod: config.fastPeriod,
+        slowPeriod: config.slowPeriod,
+        signalPeriod: config.signalPeriod,
+        SimpleMAOscillator: SMA as any,
+        SimpleMASignal: SMA as any
+      });
+
+      const lastResult = result[result.length - 1];
+      if (!lastResult || lastResult.MACD === undefined || lastResult.signal === undefined || lastResult.histogram === undefined) {
+        return { macd: 0, signal: 0, histogram: 0, isBullish: false, isBearish: false };
+      }
+
+      return {
+        macd: lastResult.MACD,
+        signal: lastResult.signal,
+        histogram: lastResult.histogram,
+        isBullish: lastResult.MACD > lastResult.signal,
+        isBearish: lastResult.MACD < lastResult.signal
+      };
+    } catch (error) {
+      logger.error('Failed to calculate MACD', error);
+      return { macd: 0, signal: 0, histogram: 0, isBullish: false, isBearish: false };
+    }
+  }
+
+  /**
+   * Calculate Awesome Oscillator - Zero line crossovers
+   */
+  calculateAwesomeOscillator(marketData: MarketData[]): number {
+    try {
+      const config = this.config.awesomeOscillator;
+      
+      // Convert MarketData to OHLC format
+      const input = marketData.map(data => ({
+        high: data.price * 1.001,
+        low: data.price * 0.999,
+        close: data.price
+      }));
+
+      const result = AwesomeOscillator.calculate({
+        high: input.map(c => c.high),
+        low: input.map(c => c.low),
+        fastPeriod: config.fastPeriod,
+        slowPeriod: config.slowPeriod
+      });
+
+      return result[result.length - 1] || 0;
+    } catch (error) {
+      logger.error('Failed to calculate Awesome Oscillator', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Calculate TRIX - Triple smoothed EMA
+   */
+  calculateTRIX(prices: number[]): number {
+    try {
+      const config = this.config.trix;
+      const result = TRIX.calculate({
+        values: prices,
+        period: config.period
+      });
+
+      return result[result.length - 1] || 0;
+    } catch (error) {
+      logger.error('Failed to calculate TRIX', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Calculate PSAR (Parabolic SAR) - Trend reversal points
+   */
+  calculatePSAR(marketData: MarketData[]): number {
+    try {
+      const config = this.config.psar;
+      
+      // Convert MarketData to OHLC format
+      const input = marketData.map(data => ({
+        high: data.price * 1.001,
+        low: data.price * 0.999,
+        close: data.price
+      }));
+
+      const result = PSAR.calculate({
+        high: input.map(c => c.high),
+        low: input.map(c => c.low),
+        step: config.step,
+        max: config.maximum
+      });
+
+      return result[result.length - 1] || 0;
+    } catch (error) {
+      logger.error('Failed to calculate PSAR', error);
+      return 0;
+    }
   }
 }
