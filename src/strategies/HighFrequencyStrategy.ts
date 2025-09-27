@@ -31,7 +31,7 @@ export class HighFrequencyStrategy {
   private priceHistory: Map<string, Array<{price: number, timestamp: number}>> = new Map();
   
   // High-frequency trading configuration
-  private readonly PROFIT_TARGET = 0.006; // 0.6% profit target (of order size, not price)
+  private readonly PROFIT_TARGET = parseFloat(process.env.HF_TP_PERCENT || '0.3') / 100; // Configurable profit target (default 0.3%)
   private readonly STOP_LOSS = 0.004; // 0.4% stop loss (of price)
   private readonly MIN_SIGNAL_STRENGTH = 0.6; // 60% minimum signal strength
   private readonly MAX_POSITIONS = 3; // Maximum concurrent positions
