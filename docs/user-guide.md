@@ -165,6 +165,84 @@ HISTORICAL_1H_DAYS=7           # 7 days of 1H data
 HISTORICAL_15M_DAYS=1          # 1 day of 15m data for scalp precision
 ```
 
+#### **Take Profit Configuration (NEW in v1.2.12)**
+
+##### **ROI-Based Take Profit (Recommended)**
+```env
+# Enable ROI-based take profit for consistent returns
+USE_ROI_BASED_TP=true
+
+# ROI targets for each strategy (percentage of investment)
+HF_ROI_TARGET=2.0              # 2% ROI for High-Frequency positions
+ANCHOR_ROI_TARGET=2.0          # 2% ROI for Anchor positions
+OPPORTUNITY_ROI_TARGET=2.0     # 2% ROI for Opportunity positions
+SCALP_ROI_TARGET=2.0           # 2% ROI for Scalp positions
+```
+
+##### **Price-Based Take Profit (Legacy)**
+```env
+# Disable ROI-based take profit to use price-based
+USE_ROI_BASED_TP=false
+
+# Price percentage targets (legacy method)
+HF_TP_PERCENT=0.3              # 0.3% price movement for HF
+ANCHOR_TP_PERCENT=1.0          # 1.0% price movement for Anchor
+OPPORTUNITY_TP_PERCENT=1.0     # 1.0% price movement for Opportunity
+SCALP_TP_PERCENT=0.5           # 0.5% price movement for Scalp
+```
+
+##### **ROI vs Price-Based Comparison**
+
+| Method | Example | Benefits |
+|--------|---------|----------|
+| **ROI-Based** | 2% ROI = $2 profit on $100 investment | Consistent returns, more frequent trades |
+| **Price-Based** | 0.3% price change = variable profit | Traditional approach, larger price movements needed |
+
+##### **ROI Calculation Example**
+- **Investment**: $100, 20x leverage
+- **Entry Price**: $0.78
+- **ROI Target**: 2% = $2 profit
+- **Required Price Movement**: $0.78 → $0.785 (0.64% price change)
+- **Result**: Quick profit with small price movement!
+
+##### **ROI-Based Trading Strategies**
+
+###### **Conservative Trading (1% ROI)**
+```env
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=1.0
+ANCHOR_ROI_TARGET=1.0
+```
+- **Benefit**: More frequent trades, lower risk
+- **Trade-off**: Smaller profits per trade
+
+###### **Balanced Trading (2% ROI) - Recommended**
+```env
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=2.0
+ANCHOR_ROI_TARGET=2.0
+```
+- **Benefit**: Good balance of frequency and profit
+- **Trade-off**: Moderate risk/reward ratio
+
+###### **Aggressive Trading (3% ROI)**
+```env
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=3.0
+ANCHOR_ROI_TARGET=3.0
+```
+- **Benefit**: Higher profits per trade
+- **Trade-off**: Less frequent trades, higher risk
+
+###### **Mixed Strategy**
+```env
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=2.0          # ROI-based for HF (frequent trades)
+ANCHOR_TP_PERCENT=1.0     # Price-based for Anchor (traditional)
+```
+- **Benefit**: Combines benefits of both approaches
+- **Trade-off**: More complex configuration
+
 ### **Optional Settings**
 
 #### **Technical Analysis**

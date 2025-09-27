@@ -1,28 +1,93 @@
-# ADA Futures Trading Bot v1.0.0
+# ADA Futures Trading Bot v1.2.12
 
-A sophisticated TypeScript trading bot for Binance Futures that implements a 4-position hedge system for ADA/USDT trading.
+A sophisticated TypeScript trading bot for Binance Futures that implements a 4-position hedge system for ADA/USDT trading with High-Frequency strategy support and ROI-based take profit.
 
 ## 🚀 Version Information
 
-**Current Version:** 1.0.0  
-**Build Date:** September 12, 2025
+**Current Version:** 1.2.12  
+**Build Date:** September 27, 2025
 
-### Key Features in v1.0.0:
-- Sequential Position Management
-- Hybrid Timing System (2min heavy + 20s quick)
-- Comprehensive 51-Level System
-- Dynamic Level Learning
-- Bidirectional Trading (LONG/SHORT)
-- Liquidation-Based Hedging
-- Price Peak Detection
-- Target Return Exit
-- Dynamic Balance System
-- Real-time Price Updates (20s)
+### Key Features in v1.2.12:
+- **ROI-Based Take Profit System** for consistent 2% returns
+- **High-Frequency Trading Strategy** with configurable position sizing
+- **Configurable HF Position Size** via `HF_POSITION_SIZE` environment variable
+- **Timestamp Error Fixes** for improved reliability
+- **Sequential Position Management**
+- **Hybrid Timing System** (2min heavy + 20s quick)
+- **Comprehensive 51-Level System**
+- **Dynamic Level Learning**
+- **Bidirectional Trading** (LONG/SHORT)
+- **Liquidation-Based Hedging**
+- **Price Peak Detection**
+- **Target Return Exit**
+- **Dynamic Balance System**
+- **Real-time Price Updates** (20s)
 
 ### Check Version:
 ```bash
 npm run version
 ```
+
+## 📋 Recent Changes (v1.2.12)
+
+### 🆕 New Features
+- **ROI-Based Take Profit System**: Positions exit based on Return on Investment (2% ROI) instead of price percentage
+- **Dual Take Profit Modes**: Support for both ROI-based (`USE_ROI_BASED_TP=true`) and price-based take profit
+- **Enhanced Profit Consistency**: More frequent trades with consistent 2% returns regardless of market conditions
+- **ROI Calculator Utility**: New `ROICalculator` class for precise ROI calculations and analysis
+
+### 🆕 New Features (v1.2.11)
+- **Configurable HF Position Size**: Set `HF_POSITION_SIZE` environment variable (default: 15%)
+- **Pair-Specific HF Sizing**: Override with `ADA_HF_POSITION_SIZE`, `BTC_HF_POSITION_SIZE`, etc.
+
+### 🐛 Bug Fixes
+- **Timestamp Error Resolution**: Fixed `-1021` timestamp errors in position monitoring
+- **HF Position Size**: Replaced hardcoded 20% with configurable environment variable
+- **Time Synchronization**: Improved Binance server time sync with network delay compensation
+
+### 🔧 Technical Improvements
+- **ROI Calculation Engine**: New utility for calculating target prices based on ROI requirements
+- **Enhanced Error Recovery**: Automatic time resync on timestamp errors
+- **Better Position Classification**: Improved HF position type determination
+- **Robust API Handling**: Multiple retry attempts with exponential backoff
+
+### 📊 Configuration Updates
+- **ROI Settings**: Added `USE_ROI_BASED_TP=true`, `HF_ROI_TARGET=2.0` to environment variables
+- **Environment Variables**: Added `HF_POSITION_SIZE=0.15` to `.env` and `env.example`
+- **TypeScript Interfaces**: Updated `PositionSizing` interface with `hfPositionSize` property
+- **Multi-Pair Support**: HF position sizing now works across all trading pairs
+
+## 🎯 ROI-Based Take Profit System
+
+### **What is ROI-Based Take Profit?**
+Instead of exiting positions based on price percentage movements (e.g., 0.3% price change), the bot now supports **Return on Investment (ROI)** based exits. This means positions exit when they achieve a specific ROI percentage (e.g., 2% ROI).
+
+### **Benefits of ROI-Based Trading:**
+- **Consistent Profits**: Always 2% ROI regardless of market conditions
+- **More Frequent Trades**: Smaller price movements needed for profit
+- **Better Risk Management**: Predictable returns for easier position sizing
+- **Leverage Optimization**: Higher leverage = smaller price movements needed
+
+### **Configuration:**
+```bash
+# Enable ROI-based take profit
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=2.0          # 2% ROI target
+ANCHOR_ROI_TARGET=2.0      # 2% ROI for Anchor positions
+OPPORTUNITY_ROI_TARGET=2.0 # 2% ROI for Opportunity positions
+SCALP_ROI_TARGET=2.0       # 2% ROI for Scalp positions
+
+# Or disable to use price-based take profit
+USE_ROI_BASED_TP=false
+HF_TP_PERCENT=0.3          # 0.3% price movement
+```
+
+### **Example ROI Calculation:**
+- **Investment**: $100, 20x leverage
+- **Entry**: $0.78
+- **ROI Target**: 2% = $2 profit
+- **Required Price Movement**: $0.78 → $0.785 (0.64% price change)
+- **Result**: Quick profit with small price movement!
 
 ## 🎯 Strategy Overview
 

@@ -2,6 +2,134 @@
 
 All notable changes to the ADA Futures Trading Bot will be documented in this file.
 
+## [1.2.12] - 2025-09-27
+
+### 🎯 ROI-Based Take Profit System
+
+This release introduces a revolutionary ROI-based take profit system that allows positions to exit based on Return on Investment rather than price percentage movements, enabling more frequent trades with consistent 2% returns.
+
+### ✨ New Features
+
+#### ROI-Based Take Profit System
+- **ROI Calculator Utility**: New `ROICalculator` class for precise ROI calculations and analysis
+- **Dual Take Profit Modes**: Support for both ROI-based (`USE_ROI_BASED_TP=true`) and price-based take profit
+- **Consistent Profit Targets**: Positions exit at configurable ROI percentages (default: 2% ROI)
+- **Enhanced Profit Consistency**: More frequent trades with predictable returns regardless of market conditions
+
+#### Environment Configuration
+- **ROI Settings**: Added `USE_ROI_BASED_TP=true` to enable ROI-based take profit
+- **ROI Targets**: Added `HF_ROI_TARGET=2.0`, `ANCHOR_ROI_TARGET=2.0`, `OPPORTUNITY_ROI_TARGET=2.0`, `SCALP_ROI_TARGET=2.0`
+- **Backward Compatibility**: Maintains support for price-based take profit as fallback
+
+### 🔧 Technical Improvements
+
+#### ROI Calculation Engine
+- **Precise ROI Calculations**: Calculate current ROI, target prices, and required price movements
+- **Comprehensive Analysis**: Detailed ROI analysis with logging and monitoring
+- **Position Management**: Updated `PositionManager` to support ROI-based take profit setting
+- **Strategy Integration**: Enhanced `HighFrequencyStrategy` with ROI-based signal generation
+
+#### Enhanced Logging and Monitoring
+- **ROI Analysis Logs**: Detailed logging of ROI calculations and target achievements
+- **Signal Generation**: Updated signal generation to show ROI-based targets
+- **Position Monitoring**: Enhanced position monitoring with ROI-based exit conditions
+
+### 📊 Configuration Examples
+
+#### Conservative Trading (1% ROI)
+```bash
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=1.0
+ANCHOR_ROI_TARGET=1.0
+```
+
+#### Aggressive Trading (3% ROI)
+```bash
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=3.0
+ANCHOR_ROI_TARGET=3.0
+```
+
+#### Mixed Strategy
+```bash
+USE_ROI_BASED_TP=true
+HF_ROI_TARGET=2.0          # ROI-based for HF
+ANCHOR_TP_PERCENT=1.0     # Price-based for Anchor
+```
+
+### 🎯 Benefits
+
+#### More Frequent Trades
+- **Smaller Price Movements**: Required for profit achievement
+- **More Opportunities**: In volatile markets
+- **Faster Profit Realization**: Reduced waiting time for targets
+
+#### Better Risk Management
+- **Consistent Profit Percentages**: Predictable returns for better planning
+- **Easier Position Sizing**: Simplified calculations based on ROI targets
+- **Leverage Optimization**: Higher leverage = smaller price movements needed
+
+### 📈 Impact
+
+- **Trading Frequency**: Increased due to smaller price movements required
+- **Profit Consistency**: Improved with predictable ROI-based exits
+- **Risk Management**: Enhanced with consistent profit percentages
+- **Capital Efficiency**: Optimized through leverage-based ROI calculations
+
+---
+
+## [1.2.11] - 2025-09-27
+
+### 🎯 High-Frequency Position Size Configuration
+
+This release introduces configurable HF position sizing and resolves critical timestamp synchronization issues.
+
+### ✨ New Features
+
+#### Configurable HF Position Sizing
+- **Environment Variable**: Added `HF_POSITION_SIZE` for configurable HF position size (default: 15%)
+- **Pair-Specific Overrides**: Support for `ADA_HF_POSITION_SIZE`, `BTC_HF_POSITION_SIZE`, etc.
+- **Dynamic Configuration**: HF position size now respects environment variables instead of hardcoded values
+
+### 🐛 Bug Fixes
+
+#### Timestamp Error Resolution
+- **Fixed `-1021` Errors**: Resolved timestamp synchronization issues in position monitoring
+- **Enhanced Time Sync**: Improved Binance server time synchronization with network delay compensation
+- **Automatic Recovery**: Added automatic time resync on timestamp errors with retry logic
+
+#### HF Position Size Fix
+- **Removed Hardcoded Value**: Replaced hardcoded 20% position size with configurable environment variable
+- **Proper Size Calculation**: HF positions now use `positionSizing.hfPositionSize` instead of hardcoded `0.20`
+
+### 🔧 Technical Improvements
+
+#### Enhanced Error Handling
+- **Multiple Sync Attempts**: Time synchronization now uses 3 attempts for better accuracy
+- **Network Delay Compensation**: Timestamp calculations account for network latency
+- **Exponential Backoff**: Improved retry logic with exponential backoff for failed requests
+
+#### Configuration Updates
+- **TypeScript Interfaces**: Updated `PositionSizing` interface with `hfPositionSize` property
+- **Multi-Pair Support**: HF position sizing now works across all trading pairs
+- **Environment Files**: Updated `.env` and `env.example` with new configuration options
+
+### 📊 Configuration Examples
+
+```bash
+# Global HF position size
+HF_POSITION_SIZE=0.15  # 15% of balance
+
+# Pair-specific overrides
+ADA_HF_POSITION_SIZE=0.20  # 20% for ADA
+BTC_HF_POSITION_SIZE=0.10  # 10% for BTC
+```
+
+### 🎯 Impact
+- **Improved Reliability**: Eliminated timestamp errors affecting position monitoring
+- **Better Flexibility**: HF position size can now be adjusted per trading pair
+- **Enhanced Stability**: Robust error recovery mechanisms for API operations
+
 ## [2.0.3] - 2025-01-27
 
 ### 📊 Monitoring and Analysis Update

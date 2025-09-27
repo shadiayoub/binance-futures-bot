@@ -42,6 +42,7 @@ const positionSizing: PositionSizing = {
   opportunityHedgeSize: 0.30,
   scalpPositionSize: 0.15, // 15% for high-frequency
   scalpHedgeSize: 0.10,
+  hfPositionSize: 0.15, // 15% for HF positions
   maxPositionSize: 0.25 // 25% max position size
 };
 

@@ -117,6 +117,7 @@ export class MultiPairSizingService {
       opportunityHedgeSize: this.BASE_HEDGE_SIZE * scalingFactor, // Same as anchor hedge
       scalpPositionSize: this.BASE_SCALP_SIZE * scalingFactor,
       scalpHedgeSize: this.BASE_SCALP_HEDGE_SIZE * scalingFactor,
+      hfPositionSize: parseFloat(process.env.HF_POSITION_SIZE || '0.15'),
       maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.25')
     };
 

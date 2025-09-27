@@ -266,9 +266,18 @@ export class DistributedHedgeService {
    * Calculate position size based on signal type
    */
   private calculatePositionSize(signal: TradingSignal, positionSizing: PositionSizing): number {
-    // This would use the same logic as PositionManager
-    // For now, return a default size
-    return 0.20; // 20% of balance
+    // Determine position size based on signal type
+    if (signal.reason && signal.reason.includes('HF')) {
+      // HF positions use configurable HF position size
+      return positionSizing.hfPositionSize;
+    } else if (signal.reason && signal.reason.includes('scalp')) {
+      return positionSizing.scalpPositionSize;
+    } else if (signal.reason && signal.reason.includes('Peak')) {
+      return positionSizing.opportunityPositionSize;
+    } else {
+      // Default to anchor position size for other signals
+      return positionSizing.anchorPositionSize;
+    }
   }
 
   /**

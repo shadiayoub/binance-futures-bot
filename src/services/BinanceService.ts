@@ -125,24 +125,51 @@ export class BinanceService {
    */
   private async syncTime(): Promise<void> {
     try {
-      // Get server time using a simple HTTP request
-      const response = await fetch('https://fapi.binance.com/fapi/v1/time');
-      const serverTimeData = await response.json() as { serverTime: number };
-      const serverTime = serverTimeData.serverTime;
-      const localTime = Date.now();
+      // Perform multiple time sync attempts for better accuracy
+      const attempts = 3;
+      let totalOffset = 0;
       
-      // Calculate time offset to match server time exactly
-      this.timeOffset = serverTime - localTime;
+      for (let i = 0; i < attempts; i++) {
+        const startTime = Date.now();
+        const response = await fetch('https://fapi.binance.com/fapi/v1/time');
+        const endTime = Date.now();
+        const networkDelay = endTime - startTime;
+        
+        const serverTimeData = await response.json() as { serverTime: number };
+        const serverTime = serverTimeData.serverTime;
+        
+        // Account for network delay in the calculation
+        const adjustedServerTime = serverTime + (networkDelay / 2);
+        const localTime = endTime;
+        
+        const offset = adjustedServerTime - localTime;
+        totalOffset += offset;
+        
+        logger.debug(`Time sync attempt ${i + 1}`, {
+          serverTime,
+          localTime,
+          networkDelay,
+          offset,
+          adjustedServerTime
+        });
+        
+        // Small delay between attempts
+        if (i < attempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      // Use average offset from all attempts
+      this.timeOffset = Math.round(totalOffset / attempts);
       
       // Add a small buffer to account for processing time
-      this.timeOffset += 100; // Add 100ms buffer
+      this.timeOffset += 200; // Increased buffer to 200ms
       
       logger.info('Time synchronized with Binance servers', {
-        serverTime: serverTime,
-        localTime: localTime,
-        offset: this.timeOffset,
-        correctedTime: localTime + this.timeOffset,
-        finalTimestamp: Math.floor((localTime + this.timeOffset))
+        attempts,
+        averageOffset: this.timeOffset,
+        correctedTime: Date.now() + this.timeOffset,
+        finalTimestamp: Math.floor(Date.now() + this.timeOffset)
       });
     } catch (error) {
       logger.warn('Failed to sync time with Binance servers, using local time', error);
@@ -599,9 +626,26 @@ export class BinanceService {
         };
       });
       
-      } catch (error) {
+      } catch (error: any) {
         lastError = error;
-        logger.warn(`Failed to get current positions (attempt ${attempt}/${maxRetries})`, error);
+        
+        if (error.code === -1021) {
+          logger.warn(`Timestamp error in getCurrentPositions (attempt ${attempt}/${maxRetries})`, {
+            code: error.code,
+            message: error.message
+          });
+          // For timestamp errors, try to resync time before retrying
+          if (attempt < maxRetries) {
+            try {
+              await this.syncTime();
+              logger.info('Time resynced, retrying getCurrentPositions...');
+            } catch (syncError) {
+              logger.warn('Failed to resync time', syncError);
+            }
+          }
+        } else {
+          logger.warn(`Failed to get current positions (attempt ${attempt}/${maxRetries})`, error);
+        }
         
         if (attempt < maxRetries) {
           // Wait before retrying (exponential backoff)
@@ -855,7 +899,39 @@ export class BinanceService {
       });
 
       return openPositions;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === -1021) {
+        logger.warn('Timestamp error in getOpenPositions, attempting time resync', {
+          code: error.code,
+          message: error.message
+        });
+        // Attempt to resync time and retry once
+        try {
+          await this.syncTime();
+          const positions = await this.client.futuresPositionRisk({
+            symbol: this.config.tradingPair
+          });
+          const openPositions: Position[] = positions
+            .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
+            .map((pos: any) => ({
+              id: pos.symbol + '_' + pos.positionSide,
+              symbol: pos.symbol,
+              side: pos.positionSide as 'LONG' | 'SHORT',
+              entryPrice: parseFloat(pos.entryPrice),
+              quantity: Math.abs(parseFloat(pos.positionAmt)),
+              leverage: parseFloat(pos.leverage),
+              status: 'OPEN' as const,
+              type: 'ANCHOR' as const, // Will be updated by PositionManager
+              pnl: parseFloat(pos.unrealizedPnl),
+              liquidationPrice: parseFloat(pos.liquidationPrice)
+            }));
+          logger.info('Successfully retried getOpenPositions after time resync');
+          return openPositions;
+        } catch (retryError) {
+          logger.error('Failed to get open positions even after time resync', retryError);
+          throw retryError;
+        }
+      }
       logger.error('Failed to get open positions', error);
       throw error;
     }

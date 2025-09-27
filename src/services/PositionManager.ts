@@ -13,6 +13,7 @@ import { HedgeGuaranteeCalculator, HedgeGuaranteeConfig } from './HedgeGuarantee
 import { DistributedHedgeService, HedgeApiConfig } from './DistributedHedgeService';
 import { MultiPairSizingService } from './MultiPairSizingService';
 import { logger } from '../utils/logger';
+import { ROICalculator } from '../utils/ROICalculator';
 
 export class PositionManager {
   private binanceService: BinanceService;
@@ -937,6 +938,41 @@ export class PositionManager {
           takeProfitPrice = currentPrice * (1 + opportunityTpPercent); // Use environment setting
         } else {
           takeProfitPrice = currentPrice * (1 - opportunityTpPercent); // Use environment setting
+        }
+      } else if (position.type === 'HF') {
+        // For HF: Use ROI-based or price-based profit targets
+        const useROIBasedTP = process.env.USE_ROI_BASED_TP === 'true';
+        
+        if (useROIBasedTP) {
+          // Use ROI-based take profit
+          const roiTarget = parseFloat(process.env.HF_ROI_TARGET || '2.0');
+          takeProfitPrice = ROICalculator.getROITakeProfitPrice(position, roiTarget);
+          
+          logger.info('🎯 Setting ROI-Based Take Profit for HF Position', {
+            positionId: position.id,
+            entryPrice: position.entryPrice,
+            currentPrice: currentPrice,
+            roiTarget: roiTarget + '%',
+            takeProfitPrice: takeProfitPrice,
+            leverage: position.leverage,
+            positionSize: position.size || position.quantity
+          });
+        } else {
+          // Use price-based take profit (fallback)
+          const hfTpPercent = parseFloat(process.env.HF_TP_PERCENT || '0.3') / 100;
+          if (position.side === 'LONG') {
+            takeProfitPrice = currentPrice * (1 + hfTpPercent);
+          } else {
+            takeProfitPrice = currentPrice * (1 - hfTpPercent);
+          }
+          
+          logger.info('🎯 Setting Price-Based Take Profit for HF Position', {
+            positionId: position.id,
+            entryPrice: position.entryPrice,
+            currentPrice: currentPrice,
+            tpPercent: hfTpPercent * 100 + '%',
+            takeProfitPrice: takeProfitPrice
+          });
         }
       } else {
         // Default fallback

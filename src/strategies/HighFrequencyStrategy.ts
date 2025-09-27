@@ -15,6 +15,7 @@ import { ComprehensiveLevels } from '../services/ComprehensiveLevels';
 import { VolumeAnalysis, VolumeAnalysisResult } from '../services/VolumeAnalysis';
 import { AIService } from '../services/AIService';
 import { logger } from '../utils/logger';
+import { ROICalculator } from '../utils/ROICalculator';
 
 export class HighFrequencyStrategy {
   private binanceService: BinanceService;
@@ -36,6 +37,10 @@ export class HighFrequencyStrategy {
   private readonly MIN_SIGNAL_STRENGTH = 0.6; // 60% minimum signal strength
   private readonly MAX_POSITIONS = 3; // Maximum concurrent positions
   private readonly ATR_STOP_MULTIPLIER = 1.0; // ATR multiplier for dynamic stops
+  
+  // ROI-based take profit configuration
+  private readonly USE_ROI_BASED_TP = process.env.USE_ROI_BASED_TP === 'true';
+  private readonly ROI_TARGET = parseFloat(process.env.HF_ROI_TARGET || '2.0'); // 2% ROI target
 
   constructor(
     binanceService: BinanceService,
@@ -151,13 +156,45 @@ export class HighFrequencyStrategy {
       timestamp: new Date()
     };
 
+    // Calculate profit target based on ROI or price percentage
+    let profitTargetInfo;
+    if (this.USE_ROI_BASED_TP) {
+      // For ROI-based TP, we need to create a mock position to calculate target price
+      const mockPosition: Position = {
+        id: 'mock',
+        symbol: 'ADAUSDT',
+        side: entryDirection as 'LONG' | 'SHORT',
+        entryPrice: currentPrice,
+        quantity: 1, // Will be calculated based on position size
+        leverage: this.leverageSettings.anchorLeverage,
+        status: 'OPEN',
+        type: 'HF',
+        pnl: 0,
+        liquidationPrice: 0
+      };
+      const targetPrice = ROICalculator.getROITakeProfitPrice(mockPosition, this.ROI_TARGET);
+      profitTargetInfo = {
+        type: 'ROI',
+        target: this.ROI_TARGET + '% ROI',
+        targetPrice: targetPrice.toFixed(4)
+      };
+    } else {
+      const targetPrice = currentPrice * (1 + (entryDirection === 'LONG' ? this.PROFIT_TARGET : -this.PROFIT_TARGET));
+      profitTargetInfo = {
+        type: 'Price',
+        target: (this.PROFIT_TARGET * 100).toFixed(1) + '% price change',
+        targetPrice: targetPrice.toFixed(4)
+      };
+    }
+
     logger.info('🚀 High-Frequency Entry Signal Generated', {
       direction: entryDirection,
       price: currentPrice.toFixed(4),
       confidence: (signalStrength.total * 100).toFixed(1) + '%',
       positionSize: (positionSize * 100).toFixed(1) + '%',
-      profitTarget: (currentPrice * (1 + (entryDirection === 'LONG' ? this.PROFIT_TARGET : -this.PROFIT_TARGET))).toFixed(4),
-      stopLoss: (currentPrice * (1 + (entryDirection === 'LONG' ? -this.STOP_LOSS : this.STOP_LOSS))).toFixed(4)
+      profitTarget: profitTargetInfo,
+      stopLoss: (currentPrice * (1 + (entryDirection === 'LONG' ? -this.STOP_LOSS : this.STOP_LOSS))).toFixed(4),
+      tpMode: this.USE_ROI_BASED_TP ? 'ROI-Based' : 'Price-Based'
     });
 
     return signal;
@@ -582,6 +619,39 @@ export class HighFrequencyStrategy {
   /**
    * Get strategy statistics
    */
+  /**
+   * Check if position should exit based on ROI target
+   */
+  shouldExitOnROI(position: Position, currentPrice: number): boolean {
+    if (!this.USE_ROI_BASED_TP) {
+      return false; // Use price-based TP instead
+    }
+
+    return ROICalculator.shouldExitOnROI(position, currentPrice, this.ROI_TARGET);
+  }
+
+  /**
+   * Get ROI-based take profit price for position
+   */
+  getROITakeProfitPrice(position: Position): number {
+    if (!this.USE_ROI_BASED_TP) {
+      // Fallback to price-based calculation
+      const priceChange = position.side === 'LONG' ? this.PROFIT_TARGET : -this.PROFIT_TARGET;
+      return position.entryPrice * (1 + priceChange);
+    }
+
+    return ROICalculator.getROITakeProfitPrice(position, this.ROI_TARGET);
+  }
+
+  /**
+   * Log ROI analysis for position
+   */
+  logROIAnalysis(position: Position, currentPrice: number): void {
+    if (this.USE_ROI_BASED_TP) {
+      ROICalculator.logROIAnalysis(position, currentPrice, this.ROI_TARGET);
+    }
+  }
+
   getStrategyStats(): any {
     const openPositions = this.currentPositions.filter(p => p.status === 'OPEN');
     const closedPositions = this.currentPositions.filter(p => p.status === 'CLOSED');
@@ -591,9 +661,10 @@ export class HighFrequencyStrategy {
       openPositions: openPositions.length,
       closedPositions: closedPositions.length,
       maxPositions: this.MAX_POSITIONS,
-      profitTarget: this.PROFIT_TARGET * 100 + '%',
+      profitTarget: this.USE_ROI_BASED_TP ? this.ROI_TARGET + '% ROI' : this.PROFIT_TARGET * 100 + '% price',
       stopLoss: this.STOP_LOSS * 100 + '%',
-      minSignalStrength: this.MIN_SIGNAL_STRENGTH * 100 + '%'
+      minSignalStrength: this.MIN_SIGNAL_STRENGTH * 100 + '%',
+      tpMode: this.USE_ROI_BASED_TP ? 'ROI-Based' : 'Price-Based'
     };
   }
 }

@@ -18,6 +18,7 @@ export interface PositionSizing {
   opportunityHedgeSize: number;
   scalpPositionSize: number;
   scalpHedgeSize: number;
+  hfPositionSize: number; // High-Frequency position size as percentage of balance
   maxPositionSize: number; // Maximum position size as percentage of balance
 }
 

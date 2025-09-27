@@ -22,6 +22,7 @@ export const bnbConfig: PairConfig = {
     opportunityHedgeSize: parseFloat(process.env.BNB_OPPORTUNITY_HEDGE_SIZE || process.env.BASE_HEDGE_SIZE || '0.30'),
     scalpPositionSize: parseFloat(process.env.BNB_SCALP_POSITION_SIZE || process.env.BASE_SCALP_SIZE || '0.10'),
     scalpHedgeSize: parseFloat(process.env.BNB_SCALP_HEDGE_SIZE || process.env.BASE_SCALP_HEDGE_SIZE || '0.10'),
+    hfPositionSize: parseFloat(process.env.BNB_HF_POSITION_SIZE || process.env.HF_POSITION_SIZE || '0.15'),
     maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.25'),
   },
   

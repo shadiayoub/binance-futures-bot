@@ -33,6 +33,7 @@ export const positionSizing: PositionSizing = {
   opportunityHedgeSize: parseFloat(process.env.OPPORTUNITY_HEDGE_SIZE || '0.30'),
   scalpPositionSize: parseFloat(process.env.SCALP_POSITION_SIZE || '0.10'),
   scalpHedgeSize: parseFloat(process.env.SCALP_HEDGE_SIZE || '0.10'),
+  hfPositionSize: parseFloat(process.env.HF_POSITION_SIZE || '0.15'), // 15% HF position size
   maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.20'), // 20% max position size
 };
 
