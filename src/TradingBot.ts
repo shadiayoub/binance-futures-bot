@@ -632,6 +632,12 @@ export class TradingBot {
       const currentPrice = await this.binanceService.getCurrentPrice();
       logger.info('🔍 Getting comprehensive info for price', { currentPrice: currentPrice.toFixed(4) });
       const comprehensiveInfo = this.hedgeStrategy.getComprehensiveLevelsInfo(currentPrice);
+      
+      // Safety check for comprehensiveInfo
+      if (!comprehensiveInfo) {
+        logger.warn('⚠️ Comprehensive info is null/undefined');
+        return;
+      }
     
     logger.info('Bot state update', {
       isRunning: this.isRunning,
@@ -652,14 +658,14 @@ export class TradingBot {
       comprehensiveSignals: {
         currentZone: comprehensiveInfo.currentZone?.name || 'Unknown',
         longEntry: comprehensiveInfo.longEntry ? {
-          price: comprehensiveInfo.longEntry.price.toFixed(4),
-          description: comprehensiveInfo.longEntry.description,
-          importance: comprehensiveInfo.longEntry.importance
+          price: comprehensiveInfo.longEntry.price?.toFixed(4) || 'N/A',
+          description: comprehensiveInfo.longEntry.description || 'N/A',
+          importance: comprehensiveInfo.longEntry.importance || 'N/A'
         } : null,
         shortEntry: comprehensiveInfo.shortEntry ? {
-          price: comprehensiveInfo.shortEntry.price.toFixed(4),
-          description: comprehensiveInfo.shortEntry.description,
-          importance: comprehensiveInfo.shortEntry.importance
+          price: comprehensiveInfo.shortEntry.price?.toFixed(4) || 'N/A',
+          description: comprehensiveInfo.shortEntry.description || 'N/A',
+          importance: comprehensiveInfo.shortEntry.importance || 'N/A'
         } : null
       },
       scalpTrade: scalpTradeStatus,

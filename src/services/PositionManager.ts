@@ -124,7 +124,7 @@ export class PositionManager {
       
       // Enhanced validation checks
       const priceValid = Math.abs(currentPrice - signal.price) / signal.price < 0.01; // Within 1%
-      const volumeValid = volumeRatio > 1.0; // Above average volume
+      const volumeValid = this.technicalAnalysis.isVolumeAboveThreshold(volumeRatio); // Use configurable threshold
       
       logger.info('🔍 Pre-Entry Signal Validation', {
         signalType: signal.type,
@@ -134,6 +134,7 @@ export class PositionManager {
         priceValid,
         volumeValid,
         volumeRatio: volumeRatio.toFixed(2),
+        volumeThreshold: this.technicalAnalysis.config.volumeMultiplier,
         reason: signal.reason
       });
       
