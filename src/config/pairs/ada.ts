@@ -27,11 +27,11 @@ export const adaConfig: PairConfig = {
   
   // Leverage settings (pair-specific overrides global defaults)
   leverageSettings: {
-    anchorLeverage: parseInt(process.env.ADA_ANCHOR_LEVERAGE || process.env.ANCHOR_LEVERAGE || '10'),
-    hedgeLeverage: parseInt(process.env.ADA_HEDGE_LEVERAGE || process.env.HEDGE_LEVERAGE || '15'),
-    opportunityLeverage: parseInt(process.env.ADA_OPPORTUNITY_LEVERAGE || process.env.OPPORTUNITY_LEVERAGE || '10'),
+    anchorLeverage: parseInt(process.env.ADA_ANCHOR_LEVERAGE || process.env.ANCHOR_LEVERAGE || '20'),
+    hedgeLeverage: parseInt(process.env.ADA_HEDGE_LEVERAGE || process.env.HEDGE_LEVERAGE || '25'),
+    opportunityLeverage: parseInt(process.env.ADA_OPPORTUNITY_LEVERAGE || process.env.OPPORTUNITY_LEVERAGE || '20'),
     scalpLeverage: parseInt(process.env.ADA_SCALP_LEVERAGE || process.env.SCALP_LEVERAGE || '15'),
-    scalpHedgeLeverage: parseInt(process.env.ADA_SCALP_HEDGE_LEVERAGE || process.env.SCALP_HEDGE_LEVERAGE || '15'),
+    scalpHedgeLeverage: parseInt(process.env.ADA_SCALP_HEDGE_LEVERAGE || process.env.SCALP_HEDGE_LEVERAGE || '25'),
     emergencyHedgeLeverage: parseInt(process.env.ADA_EMERGENCY_HEDGE_LEVERAGE || process.env.EMERGENCY_HEDGE_LEVERAGE || '20'),
   },
   

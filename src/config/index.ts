@@ -37,12 +37,12 @@ export const positionSizing: PositionSizing = {
 };
 
 export const leverageSettings: LeverageSettings = {
-  anchorLeverage: parseInt(process.env.ANCHOR_LEVERAGE || '10'),
-  hedgeLeverage: parseInt(process.env.HEDGE_LEVERAGE || '5'),
-  opportunityLeverage: parseInt(process.env.OPPORTUNITY_LEVERAGE || '10'),
-  scalpLeverage: parseInt(process.env.SCALP_LEVERAGE || '15'),
-  scalpHedgeLeverage: parseInt(process.env.SCALP_HEDGE_LEVERAGE || '18'),
-  emergencyHedgeLeverage: parseInt(process.env.EMERGENCY_HEDGE_LEVERAGE || '20'),
+  anchorLeverage: parseInt(process.env.ANCHOR_LEVERAGE || '20'), // Default to 20x if not set
+  hedgeLeverage: parseInt(process.env.HEDGE_LEVERAGE || '25'), // Default to 25x if not set
+  opportunityLeverage: parseInt(process.env.OPPORTUNITY_LEVERAGE || '20'), // Default to 20x if not set
+  scalpLeverage: parseInt(process.env.SCALP_LEVERAGE || '15'), // Default to 15x if not set
+  scalpHedgeLeverage: parseInt(process.env.SCALP_HEDGE_LEVERAGE || '25'), // Default to 25x if not set
+  emergencyHedgeLeverage: parseInt(process.env.EMERGENCY_HEDGE_LEVERAGE || '20'), // Default to 20x if not set
 };
 
 export const technicalConfig: TechnicalConfig = {

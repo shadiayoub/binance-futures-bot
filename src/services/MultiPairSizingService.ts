@@ -39,6 +39,19 @@ export class MultiPairSizingService {
   }
 
   /**
+   * Check if user has set custom position sizing via environment variables
+   */
+  private hasCustomPositionSizing(): boolean {
+    return !!(
+      process.env.BASE_ANCHOR_SIZE ||
+      process.env.BASE_HEDGE_SIZE ||
+      process.env.BASE_OPPORTUNITY_SIZE ||
+      process.env.BASE_SCALP_SIZE ||
+      process.env.BASE_SCALP_HEDGE_SIZE
+    );
+  }
+
+  /**
    * Calculate optimal sizing based on number of active pairs
    */
   calculateOptimalSizing(activePairs: string[]): SizingCalculationResult {
@@ -50,10 +63,28 @@ export class MultiPairSizingService {
       maxTotalExposure: `${this.MAX_TOTAL_EXPOSURE * 100}%`
     });
 
+    // Check if user has overridden sizing with environment variables
+    const hasCustomSizing = this.hasCustomPositionSizing();
+    
     let scalingFactor: number;
     let recommendation: string;
 
-    if (numPairs <= 2) {
+    if (hasCustomSizing) {
+      // User has set custom sizing - use 1.0 scaling factor (no auto-scaling)
+      scalingFactor = 1.0;
+      recommendation = `Using custom sizing from environment variables (no auto-scaling)`;
+      
+      logger.info('🔧 Using custom position sizing from environment', {
+        scalingFactor: scalingFactor,
+        recommendation: recommendation,
+        customSizing: {
+          anchor: process.env.BASE_ANCHOR_SIZE || 'not set',
+          hedge: process.env.BASE_HEDGE_SIZE || 'not set',
+          opportunity: process.env.BASE_OPPORTUNITY_SIZE || 'not set',
+          scalp: process.env.BASE_SCALP_SIZE || 'not set'
+        }
+      });
+    } else if (numPairs <= 2) {
       // Use original sizing for 1-2 pairs (exactly 100% for 2 pairs)
       scalingFactor = 1.0;
       recommendation = `Using original sizing (${numPairs} pairs): 20%/30% per pair = ${numPairs * 50}% total exposure`;
@@ -91,11 +122,11 @@ export class MultiPairSizingService {
 
     // Use environment variables for leverage settings (don't override)
     const leverageSettings: LeverageSettings = {
-      anchorLeverage: parseInt(process.env.ANCHOR_LEVERAGE || '10'),
-      hedgeLeverage: parseInt(process.env.HEDGE_LEVERAGE || '15'),
-      opportunityLeverage: parseInt(process.env.OPPORTUNITY_LEVERAGE || '10'),
+      anchorLeverage: parseInt(process.env.ANCHOR_LEVERAGE || '20'),
+      hedgeLeverage: parseInt(process.env.HEDGE_LEVERAGE || '25'),
+      opportunityLeverage: parseInt(process.env.OPPORTUNITY_LEVERAGE || '20'),
       scalpLeverage: parseInt(process.env.SCALP_LEVERAGE || '15'),
-      scalpHedgeLeverage: parseInt(process.env.SCALP_HEDGE_LEVERAGE || '15'),
+      scalpHedgeLeverage: parseInt(process.env.SCALP_HEDGE_LEVERAGE || '25'),
       emergencyHedgeLeverage: parseInt(process.env.EMERGENCY_HEDGE_LEVERAGE || '20')
     };
 
