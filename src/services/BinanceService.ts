@@ -506,17 +506,26 @@ export class BinanceService {
         const side = parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT';
         
         // Determine position type based on creation order and characteristics
-        let positionType: 'ANCHOR' | 'ANCHOR_HEDGE' | 'OPPORTUNITY' | 'OPPORTUNITY_HEDGE' | 'SCALP' | 'SCALP_HEDGE';
+        let positionType: 'ANCHOR' | 'ANCHOR_HEDGE' | 'OPPORTUNITY' | 'OPPORTUNITY_HEDGE' | 'SCALP' | 'SCALP_HEDGE' | 'HF';
         
         if (activePositions.length === 1) {
           // Single position - likely original
-          if (leverage >= 20) {
-            positionType = positionSize > 100 ? 'ANCHOR' : 'SCALP';
-          } else if (leverage >= 15) {
-            // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
-            positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
+          // MODIFIED: In HF-only mode, classify single positions as HF
+          const isHFOnlyMode = true; // Since we disabled other strategies
+          
+          if (isHFOnlyMode) {
+            // All positions in HF-only mode are HF positions
+            positionType = 'HF';
           } else {
-            positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
+            // Original logic for multi-strategy mode
+            if (leverage >= 20) {
+              positionType = positionSize > 100 ? 'ANCHOR' : 'SCALP';
+            } else if (leverage >= 15) {
+              // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
+              positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
+            } else {
+              positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
+            }
           }
         } else if (activePositions.length === 2) {
           // Two positions - first is original, second is hedge
@@ -543,13 +552,23 @@ export class BinanceService {
           }
         } else {
           // Multiple positions - use heuristics
-          if (leverage >= 20) {
-            positionType = positionSize > 100 ? 'ANCHOR_HEDGE' : 'SCALP_HEDGE';
-          } else if (leverage >= 15) {
-            // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
-            positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
+          // MODIFIED: In HF-only mode, classify all new positions as HF
+          // Check if we're in HF-only mode (no hedge strategy active)
+          const isHFOnlyMode = true; // Since we disabled other strategies
+          
+          if (isHFOnlyMode) {
+            // All positions in HF-only mode are HF positions
+            positionType = 'HF';
           } else {
-            positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
+            // Original logic for multi-strategy mode
+            if (leverage >= 20) {
+              positionType = positionSize > 100 ? 'ANCHOR_HEDGE' : 'SCALP_HEDGE';
+            } else if (leverage >= 15) {
+              // For 15x leverage, consider size: large positions are ANCHOR, small are SCALP
+              positionType = positionSize > 200 ? 'ANCHOR' : 'SCALP';
+            } else {
+              positionType = positionSize > 200 ? 'ANCHOR' : 'OPPORTUNITY';
+            }
           }
         }
 

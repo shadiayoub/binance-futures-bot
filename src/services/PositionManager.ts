@@ -81,7 +81,9 @@ export class PositionManager {
       switch (signal.type) {
         case 'ENTRY':
           // Determine position type based on signal reason
-          if (signal.reason && signal.reason.includes('scalp')) {
+          if (signal.reason && signal.reason.includes('HF')) {
+            return await this.openHFPosition(signal);
+          } else if (signal.reason && signal.reason.includes('scalp')) {
             return await this.openScalpPosition(signal);
           } else if (signal.reason && signal.reason.includes('Peak')) {
             return await this.openOpportunityPosition(signal);
@@ -261,6 +263,66 @@ export class PositionManager {
       return position;
     } catch (error) {
       logger.error('Failed to open scalp position', error);
+      return null;
+    }
+  }
+
+  /**
+   * Open High-Frequency position
+   */
+  private async openHFPosition(signal: TradingSignal): Promise<Position | null> {
+    try {
+      // ENHANCED VALIDATION: Validate signal before opening position
+      const isValidSignal = await this.validateSignal(signal);
+      if (!isValidSignal) {
+        logger.warn('❌ Cannot open HF position - signal validation failed', {
+          signal: signal,
+          reason: 'Pre-entry validation failed'
+        });
+        return null;
+      }
+      
+      // Check cross-pair primary position limit first
+      const pair = this.binanceService.getConfig().tradingPair;
+      if (!this.multiPairSizingService.canOpenPrimaryPosition(pair, 'HF')) {
+        logger.warn('Cannot open HF position - cross-pair limit reached', {
+          pair: pair,
+          positionType: 'HF',
+          reason: 'Maximum 2 primary positions allowed across all pairs'
+        });
+        return null;
+      }
+
+      // Check if we already have an HF position
+      if (!this.canOpenPosition('HF')) {
+        logger.warn('Cannot open HF position - already exists', {
+          existingPositions: this.currentPositions.filter(p => p.type === 'HF' && p.status === 'OPEN')
+        });
+        return null;
+      }
+
+      // Use distributed hedge service for primary positions
+      const position = await this.distributedHedgeService.openPrimaryPosition(
+        signal,
+        this.positionSizing,
+        this.leverageSettings
+      );
+
+      if (position) {
+        position.type = 'HF';
+        this.currentPositions.push(position);
+        
+        // Register primary position in cross-pair system
+        this.multiPairSizingService.registerPrimaryPosition(pair, 'HF', position.id);
+        
+        // Set static take profit for HF position
+        await this.setStaticTakeProfit(position);
+        
+        logger.info('HF position opened', position);
+      }
+      return position;
+    } catch (error) {
+      logger.error('Failed to open HF position', error);
       return null;
     }
   }
@@ -745,7 +807,7 @@ export class PositionManager {
    * Only one position type (ANCHOR, PEAK, or SCALP) can be active at a time
    * New position types can only open when the current cycle is complete
    */
-  canOpenPosition(type: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): boolean {
+  canOpenPosition(type: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF'): boolean {
     // Check if we have any open positions of any type
     const hasAnyOpenPositions = this.currentPositions.some(pos => pos.status === 'OPEN');
     

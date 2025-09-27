@@ -594,8 +594,9 @@ export class TradingBot {
       case 'ENTRY':
         // Only allow High-Frequency signals (HF signals)
         if (signal.reason && signal.reason.includes('HF')) {
-          // Check if we can open a position (any type for HF strategy)
-          return this.positionManager.canOpenPosition('SCALP') || 
+          // Check if we can open a HF position
+          return this.positionManager.canOpenPosition('HF') || 
+                 this.positionManager.canOpenPosition('SCALP') || 
                  this.positionManager.canOpenPosition('OPPORTUNITY') ||
                  this.positionManager.canOpenPosition('ANCHOR');
         }

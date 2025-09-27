@@ -177,7 +177,7 @@ export class MultiPairSizingService {
   /**
    * Check if a primary position can be opened (cross-pair limit)
    */
-  canOpenPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): boolean {
+  canOpenPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF'): boolean {
     const canOpen = this.primaryPositionCount < this.MAX_PRIMARY_POSITIONS;
     
     if (!canOpen) {
@@ -205,7 +205,7 @@ export class MultiPairSizingService {
   /**
    * Register a primary position opening
    */
-  registerPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP', positionId: string): void {
+  registerPrimaryPosition(pair: string, positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF', positionId: string): void {
     if (this.primaryPositionCount >= this.MAX_PRIMARY_POSITIONS) {
       logger.error('❌ Attempted to register primary position when limit reached', {
         pair: pair,

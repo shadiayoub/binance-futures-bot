@@ -86,7 +86,7 @@ export interface Position {
   id: string;
   symbol: string;
   side: 'LONG' | 'SHORT';
-  type: 'ANCHOR' | 'ANCHOR_HEDGE' | 'OPPORTUNITY' | 'OPPORTUNITY_HEDGE' | 'SCALP' | 'SCALP_HEDGE';
+  type: 'ANCHOR' | 'ANCHOR_HEDGE' | 'OPPORTUNITY' | 'OPPORTUNITY_HEDGE' | 'SCALP' | 'SCALP_HEDGE' | 'HF';
   size?: number; // Optional for backward compatibility
   quantity: number; // Required for position amount
   entryPrice: number;
