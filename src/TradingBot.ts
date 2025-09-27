@@ -587,24 +587,38 @@ export class TradingBot {
 
   /**
    * Check if we can execute a signal
+   * MODIFIED: Only allow High-Frequency signals, disable Opportunity and Anchor triggers
    */
   private canExecuteSignal(signal: TradingSignal): boolean {
     switch (signal.type) {
       case 'ENTRY':
-        // Determine position type based on signal reason
-        if (signal.reason && signal.reason.includes('scalp')) {
-          return this.positionManager.canOpenPosition('SCALP');
-        } else if (signal.reason && signal.reason.includes('Peak')) {
-          return this.positionManager.canOpenPosition('OPPORTUNITY');
-        } else {
-          return this.positionManager.canOpenPosition('ANCHOR');
+        // Only allow High-Frequency signals (HF signals)
+        if (signal.reason && signal.reason.includes('HF')) {
+          // Check if we can open a position (any type for HF strategy)
+          return this.positionManager.canOpenPosition('SCALP') || 
+                 this.positionManager.canOpenPosition('OPPORTUNITY') ||
+                 this.positionManager.canOpenPosition('ANCHOR');
         }
+        // Block all other entry signals (Opportunity, Anchor, Scalp)
+        logger.warn('Blocking non-HF entry signal', { 
+          signal: signal.reason,
+          reason: 'Only High-Frequency signals allowed'
+        });
+        return false;
       case 'HEDGE':
-        return this.positionManager.canOpenHedge('ANCHOR_HEDGE') || 
-               this.positionManager.canOpenHedge('OPPORTUNITY_HEDGE') ||
-               this.positionManager.canOpenHedge('SCALP_HEDGE');
+        // Disable all hedge signals
+        logger.warn('Blocking hedge signal', { 
+          signal: signal.reason,
+          reason: 'Hedge strategy disabled - HF only mode'
+        });
+        return false;
       case 'RE_ENTRY':
-        return this.positionManager.canOpenPosition('OPPORTUNITY');
+        // Disable re-entry signals (Opportunity triggers)
+        logger.warn('Blocking re-entry signal', { 
+          signal: signal.reason,
+          reason: 'Re-entry signals disabled - HF only mode'
+        });
+        return false;
       case 'EXIT':
         return true; // Always allow exits
       default:

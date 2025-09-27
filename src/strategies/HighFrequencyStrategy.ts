@@ -31,8 +31,8 @@ export class HighFrequencyStrategy {
   private priceHistory: Map<string, Array<{price: number, timestamp: number}>> = new Map();
   
   // High-frequency trading configuration
-  private readonly PROFIT_TARGET = 0.006; // 0.6% profit target
-  private readonly STOP_LOSS = 0.004; // 0.4% stop loss
+  private readonly PROFIT_TARGET = 0.006; // 0.6% profit target (of order size, not price)
+  private readonly STOP_LOSS = 0.004; // 0.4% stop loss (of price)
   private readonly MIN_SIGNAL_STRENGTH = 0.6; // 60% minimum signal strength
   private readonly MAX_POSITIONS = 3; // Maximum concurrent positions
   private readonly ATR_STOP_MULTIPLIER = 1.0; // ATR multiplier for dynamic stops
@@ -400,31 +400,24 @@ export class HighFrequencyStrategy {
   }
 
   /**
-   * Check if profit target is reached
+   * Check if profit target is reached (0.6% of order size)
    */
   private checkProfitTarget(position: Position, currentPrice: number): TradingSignal | null {
-    const entryPrice = position.entryPrice;
-    const isLong = position.side === 'LONG';
+    // Calculate current profit based on position size (0.6% target)
+    const currentProfitBasedOnSize = this.calculateProfitBasedOnSize(position, currentPrice);
     
-    let profitTargetPrice: number;
-    if (isLong) {
-      profitTargetPrice = entryPrice * (1 + this.PROFIT_TARGET);
-    } else {
-      profitTargetPrice = entryPrice * (1 - this.PROFIT_TARGET);
-    }
+    // Check if we've reached the 0.6% profit target based on position size
+    const hasReachedTarget = currentProfitBasedOnSize >= 100; // 100% means we've achieved 0.6% of position size
     
-    const isTargetReached = isLong ? 
-      currentPrice >= profitTargetPrice : 
-      currentPrice <= profitTargetPrice;
-    
-    if (isTargetReached) {
-      logger.info('🎯 High-Frequency Profit Target Reached', {
+    if (hasReachedTarget) {
+      logger.info('🎯 High-Frequency Profit Target Reached (0.6% of Order Size)', {
         positionId: position.id,
         side: position.side,
-        entryPrice: entryPrice.toFixed(4),
+        entryPrice: position.entryPrice.toFixed(4),
         currentPrice: currentPrice.toFixed(4),
-        profitTarget: profitTargetPrice.toFixed(4),
-        profit: ((Math.abs(currentPrice - entryPrice) / entryPrice) * 100).toFixed(2) + '%'
+        currentProfitBasedOnSize: currentProfitBasedOnSize.toFixed(2) + '%',
+        targetProfit: '0.6% of order size',
+        reason: 'High-frequency position reached 0.6% profit target based on order size'
       });
       
       return {
@@ -432,12 +425,40 @@ export class HighFrequencyStrategy {
         position: position.side,
         price: currentPrice,
         confidence: 1.0,
-        reason: `HF Profit Target Reached (${this.PROFIT_TARGET * 100}%)`,
+        reason: `HF Profit Target Reached (0.6% of order size)`,
         timestamp: new Date()
       };
     }
     
     return null;
+  }
+
+  /**
+   * Calculate profit based on position size (0.6% of position size)
+   * This method calculates profit as a percentage of the order size rather than price
+   */
+  private calculateProfitBasedOnSize(position: Position, currentPrice: number): number {
+    const positionSize = position.size || position.quantity;
+    const leverage = position.leverage;
+    
+    // Calculate the notional value of the position
+    const notionalValue = positionSize * position.entryPrice * leverage;
+    
+    // Calculate current PnL in absolute terms
+    let priceChange;
+    if (position.side === 'LONG') {
+      priceChange = currentPrice - position.entryPrice;
+    } else {
+      priceChange = position.entryPrice - currentPrice;
+    }
+    
+    const currentPnL = (priceChange / position.entryPrice) * notionalValue;
+    
+    // Calculate 0.6% of position size as target profit
+    const targetProfitAmount = notionalValue * 0.006; // 0.6% of position size
+    
+    // Return the percentage of target profit achieved
+    return (currentPnL / targetProfitAmount) * 100;
   }
 
   /**
