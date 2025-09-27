@@ -275,9 +275,18 @@ export class DistributedHedgeService {
    * Calculate leverage based on signal type
    */
   private calculateLeverage(signal: TradingSignal, leverageSettings: LeverageSettings): number {
-    // This would use the same logic as PositionManager
-    // For now, return a default leverage
-    return 10; // 10x leverage
+    // Determine leverage based on signal type
+    if (signal.reason && signal.reason.includes('HF')) {
+      // HF positions use anchor leverage (20x from config)
+      return leverageSettings.anchorLeverage;
+    } else if (signal.reason && signal.reason.includes('scalp')) {
+      return leverageSettings.scalpLeverage;
+    } else if (signal.reason && signal.reason.includes('Peak')) {
+      return leverageSettings.opportunityLeverage;
+    } else {
+      // Default to anchor leverage for other signals
+      return leverageSettings.anchorLeverage;
+    }
   }
 
   /**
