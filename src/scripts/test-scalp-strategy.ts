@@ -14,7 +14,7 @@ async function testScalpStrategy() {
     const binanceService = new BinanceService(tradingConfig);
     const technicalAnalysis = new TechnicalAnalysis(technicalConfig);
     const dynamicLevels = new DynamicLevels();
-    const positionManager = new PositionManager(binanceService, positionSizing, leverageSettings);
+    const positionManager = new PositionManager(binanceService, technicalAnalysis, positionSizing, leverageSettings);
 
     // Initialize scalp strategy
     const scalpStrategy = new ScalpStrategy(

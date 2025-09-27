@@ -253,6 +253,13 @@ export class TechnicalAnalysis {
   }
 
   /**
+   * Get the volume multiplier threshold
+   */
+  getVolumeMultiplier(): number {
+    return this.config.volumeMultiplier;
+  }
+
+  /**
    * Check if RSI is in valid range for trading
    * Expanded range for hedged strategy - more opportunities
    */

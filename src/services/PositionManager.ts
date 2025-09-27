@@ -6,6 +6,7 @@ import {
   BotState 
 } from '../types';
 import { BinanceService } from './BinanceService';
+import { TechnicalAnalysis } from './TechnicalAnalysis';
 import { DynamicLevels } from './DynamicLevels';
 import { HedgeMonitor, HedgeAttempt } from './HedgeMonitor';
 import { HedgeGuaranteeCalculator, HedgeGuaranteeConfig } from './HedgeGuaranteeCalculator';
@@ -15,6 +16,7 @@ import { logger } from '../utils/logger';
 
 export class PositionManager {
   private binanceService: BinanceService;
+  private technicalAnalysis: TechnicalAnalysis;
   private positionSizing: PositionSizing;
   private leverageSettings: LeverageSettings;
   private currentPositions: Position[] = [];
@@ -27,10 +29,12 @@ export class PositionManager {
 
   constructor(
     binanceService: BinanceService,
+    technicalAnalysis: TechnicalAnalysis,
     positionSizing: PositionSizing,
     leverageSettings: LeverageSettings
   ) {
     this.binanceService = binanceService;
+    this.technicalAnalysis = technicalAnalysis;
     this.positionSizing = positionSizing;
     this.leverageSettings = leverageSettings;
     this.dynamicLevels = new DynamicLevels();
@@ -134,7 +138,7 @@ export class PositionManager {
         priceValid,
         volumeValid,
         volumeRatio: volumeRatio.toFixed(2),
-        volumeThreshold: this.technicalAnalysis.config.volumeMultiplier,
+        volumeThreshold: this.technicalAnalysis.getVolumeMultiplier(),
         reason: signal.reason
       });
       

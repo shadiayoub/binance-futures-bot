@@ -49,7 +49,7 @@ export class TradingBot {
     this.aiConfig = aiConfig || getAIConfig();
     this.binanceService = new BinanceService(config);
     this.technicalAnalysis = new TechnicalAnalysis(technicalConfig);
-    this.positionManager = new PositionManager(this.binanceService, positionSizing, leverageSettings);
+    this.positionManager = new PositionManager(this.binanceService, this.technicalAnalysis, positionSizing, leverageSettings);
     this.aiService = new AIService(this.aiConfig);
     this.hedgeStrategy = new HedgeStrategy(
       this.binanceService,

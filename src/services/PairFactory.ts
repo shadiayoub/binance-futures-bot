@@ -88,6 +88,7 @@ export class PairFactory {
       // Create position manager with optimized sizing
       const positionManager = new PositionManager(
         binanceService,
+        technicalAnalysis,
         optimizedConfig.positionSizing,
         optimizedConfig.leverageSettings
       );
