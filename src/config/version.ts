@@ -3,7 +3,7 @@
  * This file contains the current version of the ADA Futures Trading Bot
  */
 
-export const BOT_VERSION = '1.2.0';
+export const BOT_VERSION = '1.3.5';
 
 export const VERSION_INFO = {
   version: BOT_VERSION,
@@ -75,7 +75,39 @@ export const VERSION_INFO = {
     'Advanced Technical Indicators (Stochastic RSI, Bollinger Bands, ATR, MFI, MACD, Awesome Oscillator, TRIX, PSAR)',
     'Configurable Max Position Size',
     'Strategy Isolation (Hedge, Opportunity, Scalp Disabled)',
-    'Pure High-Frequency Mode'
+    'Pure High-Frequency Mode',
+    'ROI-Based Exit Monitoring System',
+    'Real-Time ROI Analysis and Logging',
+    'Enhanced Exit Logic with ROI Priority',
+    'Complete Strategy Isolation - HF Only Mode',
+    'Removed Hedge and Scalp Strategy Dependencies',
+    'Pure High-Frequency Trading Architecture',
+    'MAJOR: Clean HF-Only Architecture Implementation',
+    'Eliminated All Strategy Conflicts and Dependencies',
+    'Optimized Memory Usage and Startup Performance',
+    'CRITICAL: Fixed Position Size Configuration Issue',
+    'Corrected Hardcoded 20% Default Override Bug',
+    'Fixed HF_POSITION_SIZE and MAX_POSITION_SIZE Environment Variable Loading',
+    'FIXED: Position Type Classification in Hedge Monitoring',
+    'Added HF Position Type Support to HedgeMonitor Interface',
+    'Fixed Position Type Filtering for HF-Only Mode',
+    'Enhanced ROI Monitoring Visibility (Debug to Info Logging)',
+    'Improved Hedge Size and Leverage Configuration for HF Positions',
+    'CRITICAL: Fixed Missing TP Orders for Existing Positions',
+    'Added Automatic TP Setting for Positions Without TP Orders',
+    'Fixed ROI Monitoring to Monitor All Open Positions',
+    'Enhanced Position Protection Against Liquidation',
+    'Added TP Order Detection and Validation System',
+    'NEW: HF Entry Price Buffer System (2% Better Execution)',
+    'Enhanced HF Position Entry Logic with Price Optimization',
+    'Improved Entry Execution for LONG and SHORT Positions',
+    'Added Entry Price Buffer Logging and Monitoring',
+    'Optimized HF Strategy for Better Profit Margins',
+    'MAJOR: S/R Level-Based Entry Pricing System',
+    'Replaced Buffer Logic with Intelligent Market Structure Entry',
+    'Historical Support/Resistance Level Integration',
+    'Dynamic S/R Level Learning for Entry Optimization',
+    'Enhanced Entry Price Calculation with Market Structure'
   ],
   strategies: [
     'High-Frequency Strategy (0.6% Profit Targets)',

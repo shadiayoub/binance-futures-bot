@@ -7,8 +7,9 @@ import { PairConfig } from '../config/PairConfig';
 import { BinanceService } from './BinanceService';
 import { TechnicalAnalysis } from './TechnicalAnalysis';
 import { PositionManager } from './PositionManager';
-import { HedgeStrategy } from '../strategies/HedgeStrategy';
-import { ScalpStrategy } from '../strategies/ScalpStrategy';
+// Strategies disabled - HF only mode
+// import { HedgeStrategy } from '../strategies/HedgeStrategy';
+// import { ScalpStrategy } from '../strategies/ScalpStrategy';
 import { DynamicLevels } from './DynamicLevels';
 import { ComprehensiveLevels } from './ComprehensiveLevels';
 import { PairLoader } from './PairLoader';
@@ -19,8 +20,9 @@ export interface PairServices {
   binanceService: BinanceService;
   technicalAnalysis: TechnicalAnalysis;
   positionManager: PositionManager;
-  hedgeStrategy: HedgeStrategy;
-  scalpStrategy: ScalpStrategy;
+  // Strategies disabled - HF only mode
+  // hedgeStrategy: HedgeStrategy;
+  // scalpStrategy: ScalpStrategy;
   dynamicLevels: DynamicLevels;
   comprehensiveLevels: ComprehensiveLevels;
 }
@@ -99,23 +101,9 @@ export class PairFactory {
       // Load comprehensive levels
       const comprehensiveLevels = await this.createComprehensiveLevels(config);
       
-      // Create hedge strategy with optimized sizing
-      const hedgeStrategy = new HedgeStrategy(
-        binanceService,
-        technicalAnalysis,
-        config.supportResistanceLevels,
-        optimizedConfig.positionSizing,
-        optimizedConfig.leverageSettings,
-        dynamicLevels
-      );
-      
-      // Create scalp strategy
-      const scalpStrategy = new ScalpStrategy(
-        binanceService,
-        technicalAnalysis,
-        dynamicLevels,
-        positionManager
-      );
+      // Strategies disabled - HF only mode
+      // const hedgeStrategy = new HedgeStrategy(...);
+      // const scalpStrategy = new ScalpStrategy(...);
       
       logger.info(`Successfully created services for ${config.symbol}`, {
         symbol: config.symbol,
@@ -123,8 +111,8 @@ export class PairFactory {
           'BinanceService',
           'TechnicalAnalysis',
           'PositionManager',
-          'HedgeStrategy',
-          'ScalpStrategy',
+          // 'HedgeStrategy', // Disabled - HF only mode
+          // 'ScalpStrategy', // Disabled - HF only mode
           'DynamicLevels',
           'ComprehensiveLevels'
         ]
@@ -134,8 +122,9 @@ export class PairFactory {
         binanceService,
         technicalAnalysis,
         positionManager,
-        hedgeStrategy,
-        scalpStrategy,
+        // Strategies disabled - HF only mode
+        // hedgeStrategy,
+        // scalpStrategy,
         dynamicLevels,
         comprehensiveLevels
       };

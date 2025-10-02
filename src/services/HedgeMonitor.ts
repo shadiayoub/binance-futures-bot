@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 
 export interface HedgeAttempt {
   primaryPositionId: string;
-  primaryPositionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP';
+  primaryPositionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF';
   primaryPositionSide: 'LONG' | 'SHORT';
   hedgeSignal: TradingSignal;
   attemptCount: number;
@@ -105,7 +105,7 @@ export class HedgeMonitor {
       
       this.failedHedgeAttempts.set(key, {
         primaryPositionId: primaryPosition.id,
-        primaryPositionType: primaryPosition.type as 'ANCHOR' | 'OPPORTUNITY' | 'SCALP',
+        primaryPositionType: primaryPosition.type as 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF',
         primaryPositionSide: primaryPosition.side,
         hedgeSignal,
         attemptCount,
@@ -426,11 +426,12 @@ export class HedgeMonitor {
   /**
    * Get hedge size based on position type
    */
-  private getHedgeSize(positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): number {
+  private getHedgeSize(positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF'): number {
     switch (positionType) {
       case 'ANCHOR': return 0.30; // 30%
       case 'OPPORTUNITY': return 0.30; // 30%
       case 'SCALP': return 0.10; // 10%
+      case 'HF': return 0.15; // 15% for HF positions
       default: return 0.30;
     }
   }
@@ -438,12 +439,13 @@ export class HedgeMonitor {
   /**
    * Get hedge leverage based on position type
    */
-  private getHedgeLeverage(positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP'): number {
+  private getHedgeLeverage(positionType: 'ANCHOR' | 'OPPORTUNITY' | 'SCALP' | 'HF'): number {
     // Use environment variables for leverage settings
     switch (positionType) {
       case 'ANCHOR': return parseInt(process.env.HEDGE_LEVERAGE || '15');
       case 'OPPORTUNITY': return parseInt(process.env.HEDGE_LEVERAGE || '15');
       case 'SCALP': return parseInt(process.env.SCALP_HEDGE_LEVERAGE || '15');
+      case 'HF': return parseInt(process.env.HEDGE_LEVERAGE || '15');
       default: return parseInt(process.env.HEDGE_LEVERAGE || '15');
     }
   }

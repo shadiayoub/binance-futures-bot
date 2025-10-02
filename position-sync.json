@@ -1,5 +1,17 @@
 {
-  "timestamp": "2025-09-26T21:53:40.926Z",
-  "primaryPositions": [],
+  "timestamp": "2025-09-28T10:26:26.725Z",
+  "primaryPositions": [
+    {
+      "id": "ADAUSDT",
+      "symbol": "ADAUSDT",
+      "side": "LONG",
+      "size": 246,
+      "leverage": 20,
+      "entryPrice": 0.7681,
+      "type": "HF",
+      "status": "OPEN",
+      "apiKey": "primary"
+    }
+  ],
   "hedgePositions": []
 }

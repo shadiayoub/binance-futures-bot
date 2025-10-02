@@ -34,7 +34,7 @@ export const positionSizing: PositionSizing = {
   scalpPositionSize: parseFloat(process.env.SCALP_POSITION_SIZE || '0.10'),
   scalpHedgeSize: parseFloat(process.env.SCALP_HEDGE_SIZE || '0.10'),
   hfPositionSize: parseFloat(process.env.HF_POSITION_SIZE || '0.15'), // 15% HF position size
-  maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.20'), // 20% max position size
+  maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.25'), // 25% max position size
 };
 
 export const leverageSettings: LeverageSettings = {

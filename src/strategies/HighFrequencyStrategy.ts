@@ -81,6 +81,27 @@ export class HighFrequencyStrategy {
       }
       const currentPrice = lastMarketData.price;
 
+      // Log ROI analysis for all open positions (for monitoring)
+      if (this.USE_ROI_BASED_TP) {
+        // Get all open positions from Binance (not just HF strategy positions)
+        const allOpenPositions = await this.binanceService.getOpenPositions();
+        
+        if (allOpenPositions.length > 0) {
+          logger.info('📊 ROI Monitoring Check', {
+            currentPrice: currentPrice,
+            roiTarget: this.ROI_TARGET + '%',
+            openPositions: allOpenPositions.length,
+            tpMode: 'ROI-Based'
+          });
+          
+          for (const position of allOpenPositions) {
+            if (position.status === 'OPEN') {
+              ROICalculator.logROIAnalysis(position, currentPrice, this.ROI_TARGET);
+            }
+          }
+        }
+      }
+
       // Learn levels from 15M data for precise entries
       this.dynamicLevels.learnLevels(marketData15m);
 
@@ -146,11 +167,23 @@ export class HighFrequencyStrategy {
     // Calculate position size based on ATR
     const positionSize = this.calculatePositionSize(currentPrice, indicators15m.atr, signalStrength.total);
     
-    // Create entry signal
+    // Calculate entry price based on historical S/R levels for better execution
+    const entryPrice = this.calculateSRBasedEntryPrice(currentPrice, entryDirection, indicators15m);
+    
+    // Log S/R-based entry price calculation
+    logger.info('🎯 HF S/R-Based Entry Price Calculated', {
+      signalPrice: currentPrice.toFixed(4),
+      entryDirection: entryDirection,
+      entryPrice: entryPrice.toFixed(4),
+      priceDifference: ((entryPrice - currentPrice) / currentPrice * 100).toFixed(2) + '%',
+      method: 'Historical S/R Levels'
+    });
+    
+    // Create entry signal with buffered price
     const signal: TradingSignal = {
       type: 'ENTRY',
       position: entryDirection,
-      price: currentPrice,
+      price: entryPrice,
       confidence: signalStrength.total,
       reason: this.generateEntryReason(signalStrength, entryDirection),
       timestamp: new Date()
@@ -164,7 +197,7 @@ export class HighFrequencyStrategy {
         id: 'mock',
         symbol: 'ADAUSDT',
         side: entryDirection as 'LONG' | 'SHORT',
-        entryPrice: currentPrice,
+        entryPrice: entryPrice, // Use buffered entry price
         quantity: 1, // Will be calculated based on position size
         leverage: this.leverageSettings.anchorLeverage,
         status: 'OPEN',
@@ -189,12 +222,14 @@ export class HighFrequencyStrategy {
 
     logger.info('🚀 High-Frequency Entry Signal Generated', {
       direction: entryDirection,
-      price: currentPrice.toFixed(4),
+      signalPrice: currentPrice.toFixed(4),
+      entryPrice: entryPrice.toFixed(4),
       confidence: (signalStrength.total * 100).toFixed(1) + '%',
       positionSize: (positionSize * 100).toFixed(1) + '%',
       profitTarget: profitTargetInfo,
       stopLoss: (currentPrice * (1 + (entryDirection === 'LONG' ? -this.STOP_LOSS : this.STOP_LOSS))).toFixed(4),
-      tpMode: this.USE_ROI_BASED_TP ? 'ROI-Based' : 'Price-Based'
+      tpMode: this.USE_ROI_BASED_TP ? 'ROI-Based' : 'Price-Based',
+      entryMethod: 'S/R Level-Based'
     });
 
     return signal;
@@ -370,11 +405,100 @@ export class HighFrequencyStrategy {
   }
 
   /**
+   * Calculate entry price based on historical S/R levels for better execution
+   */
+  private calculateSRBasedEntryPrice(currentPrice: number, entryDirection: 'LONG' | 'SHORT', indicators: TechnicalIndicators): number {
+    try {
+      // Get learned S/R levels from dynamic levels
+      const supportLevels = this.dynamicLevels.getSupportLevels();
+      const resistanceLevels = this.dynamicLevels.getResistanceLevels();
+      
+      // Get Bollinger Bands for additional context
+      const bb = indicators.bollingerBands;
+      
+      let entryPrice: number;
+      
+      if (entryDirection === 'LONG') {
+        // For LONG: Find the nearest support level below current price
+        const nearestSupport = supportLevels
+          .filter(level => level.price < currentPrice)
+          .sort((a, b) => b.price - a.price)[0]; // Closest support below current price
+        
+        if (nearestSupport) {
+          // Use support level with small buffer (0.1%) for better fill
+          entryPrice = nearestSupport.price * 0.999; // 0.1% below support
+          
+          logger.debug('🎯 LONG Entry: Using Support Level', {
+            currentPrice: currentPrice.toFixed(4),
+            supportLevel: nearestSupport.price.toFixed(4),
+            entryPrice: entryPrice.toFixed(4),
+            supportStrength: nearestSupport.strength
+          });
+        } else {
+          // Fallback: Use Bollinger lower band if no support found
+          entryPrice = bb.lower * 0.999;
+          
+          logger.debug('🎯 LONG Entry: Using Bollinger Lower Band', {
+            currentPrice: currentPrice.toFixed(4),
+            bbLower: bb.lower.toFixed(4),
+            entryPrice: entryPrice.toFixed(4)
+          });
+        }
+      } else {
+        // For SHORT: Find the nearest resistance level above current price
+        const nearestResistance = resistanceLevels
+          .filter(level => level.price > currentPrice)
+          .sort((a, b) => a.price - b.price)[0]; // Closest resistance above current price
+        
+        if (nearestResistance) {
+          // Use resistance level with small buffer (0.1%) for better fill
+          entryPrice = nearestResistance.price * 1.001; // 0.1% above resistance
+          
+          logger.debug('🎯 SHORT Entry: Using Resistance Level', {
+            currentPrice: currentPrice.toFixed(4),
+            resistanceLevel: nearestResistance.price.toFixed(4),
+            entryPrice: entryPrice.toFixed(4),
+            resistanceStrength: nearestResistance.strength
+          });
+        } else {
+          // Fallback: Use Bollinger upper band if no resistance found
+          entryPrice = bb.upper * 1.001;
+          
+          logger.debug('🎯 SHORT Entry: Using Bollinger Upper Band', {
+            currentPrice: currentPrice.toFixed(4),
+            bbUpper: bb.upper.toFixed(4),
+            entryPrice: entryPrice.toFixed(4)
+          });
+        }
+      }
+      
+      // Ensure entry price is reasonable (within 5% of current price)
+      const maxDeviation = currentPrice * 0.05; // 5% max deviation
+      if (Math.abs(entryPrice - currentPrice) > maxDeviation) {
+        logger.warn('🎯 Entry price too far from current price, using current price', {
+          currentPrice: currentPrice.toFixed(4),
+          calculatedEntryPrice: entryPrice.toFixed(4),
+          deviation: ((entryPrice - currentPrice) / currentPrice * 100).toFixed(2) + '%',
+          maxDeviation: (maxDeviation / currentPrice * 100).toFixed(2) + '%'
+        });
+        entryPrice = currentPrice;
+      }
+      
+      return entryPrice;
+      
+    } catch (error) {
+      logger.error('Error calculating S/R-based entry price', error);
+      // Fallback to current price if S/R calculation fails
+      return currentPrice;
+    }
+  }
+
+  /**
    * Calculate position size based on ATR and signal strength
    */
   private calculatePositionSize(currentPrice: number, atr: number, signalStrength: number): number {
-    // Base position size from configuration
-    const baseSize = this.positionSizing.scalpPositionSize;
+    // Base position size from configuration - use HF position size
+    const baseSize = this.positionSizing.hfPositionSize;
     
     // Adjust based on signal strength
     const strengthMultiplier = 0.5 + (signalStrength * 0.5); // 0.5 to 1.0
@@ -412,7 +536,30 @@ export class HighFrequencyStrategy {
     for (const position of this.currentPositions) {
       if (position.status !== 'OPEN') continue;
       
-      // Check profit target
+      // Check ROI target first (highest priority)
+      if (this.shouldExitOnROI(position, currentPrice)) {
+        logger.info('🎯 ROI Target Reached - Generating Exit Signal', {
+          positionId: position.id,
+          positionType: position.type,
+          side: position.side,
+          entryPrice: position.entryPrice,
+          currentPrice: currentPrice,
+          roiTarget: this.ROI_TARGET + '%',
+          tpMode: 'ROI-Based'
+        });
+        
+        signals.push({
+          type: 'EXIT',
+          position: position.side,
+          price: currentPrice,
+          confidence: 1.0,
+          reason: `ROI Target Reached (${this.ROI_TARGET}%)`,
+          timestamp: new Date()
+        });
+        continue;
+      }
+      
+      // Check profit target (fallback for non-ROI mode)
       const profitTargetSignal = this.checkProfitTarget(position, currentPrice);
       if (profitTargetSignal) {
         signals.push(profitTargetSignal);
@@ -604,7 +751,7 @@ export class HighFrequencyStrategy {
    * Update positions from external source
    */
   updatePositions(positions: Position[]): void {
-    this.currentPositions = positions.filter(p => p.type === 'SCALP' || p.type === 'SCALP_HEDGE');
+    this.currentPositions = positions.filter(p => p.type === 'HF' || p.type === 'SCALP' || p.type === 'SCALP_HEDGE');
     logger.debug('High-frequency strategy positions updated', {
       count: this.currentPositions.length,
       positions: this.currentPositions.map(p => ({
@@ -624,10 +771,21 @@ export class HighFrequencyStrategy {
    */
   shouldExitOnROI(position: Position, currentPrice: number): boolean {
     if (!this.USE_ROI_BASED_TP) {
+      logger.debug('ROI-based TP disabled - using price-based TP instead', {
+        positionId: position.id,
+        tpMode: 'Price-Based'
+      });
       return false; // Use price-based TP instead
     }
 
-    return ROICalculator.shouldExitOnROI(position, currentPrice, this.ROI_TARGET);
+    const shouldExit = ROICalculator.shouldExitOnROI(position, currentPrice, this.ROI_TARGET);
+    
+    // Log ROI analysis for debugging
+    if (shouldExit) {
+      ROICalculator.logROIAnalysis(position, currentPrice, this.ROI_TARGET);
+    }
+    
+    return shouldExit;
   }
 
   /**

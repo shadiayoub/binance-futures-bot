@@ -811,6 +811,26 @@ export class BinanceService {
   }
 
   /**
+   * Check if position has an existing take profit order
+   */
+  async hasTakeProfitOrder(position: Position): Promise<boolean> {
+    try {
+      const orders = await this.client.futuresOpenOrders({
+        symbol: this.config.tradingPair
+      });
+
+      return orders.some((order: any) => 
+        order.positionSide === position.side && 
+        order.type === 'TAKE_PROFIT_MARKET' &&
+        order.status === 'NEW'
+      );
+    } catch (error) {
+      logger.error('Failed to check TP orders', error);
+      return false;
+    }
+  }
+
+  /**
    * Set take profit order for a position
    */
   async setTakeProfitOrder(position: Position, takeProfitPrice: number): Promise<void> {

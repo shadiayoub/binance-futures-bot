@@ -13,8 +13,9 @@ import {
 import { BinanceService } from './services/BinanceService';
 import { TechnicalAnalysis } from './services/TechnicalAnalysis';
 import { PositionManager } from './services/PositionManager';
-import { HedgeStrategy } from './strategies/HedgeStrategy';
-import { ScalpStrategy } from './strategies/ScalpStrategy';
+// Strategies disabled - HF only mode
+// import { HedgeStrategy } from './strategies/HedgeStrategy';
+// import { ScalpStrategy } from './strategies/ScalpStrategy';
 import { HighFrequencyStrategy } from './strategies/HighFrequencyStrategy';
 import { AIService } from './services/AIService';
 import { logger } from './utils/logger';
@@ -26,8 +27,9 @@ export class TradingBot {
   private binanceService: BinanceService;
   private technicalAnalysis: TechnicalAnalysis;
   private positionManager: PositionManager;
-  private hedgeStrategy: HedgeStrategy;
-  private scalpStrategy: ScalpStrategy;
+  // Strategies disabled - HF only mode
+  // private hedgeStrategy: HedgeStrategy;
+  // private scalpStrategy: ScalpStrategy;
   private highFrequencyStrategy: HighFrequencyStrategy;
   private aiService: AIService;
   private config: TradingConfig;
@@ -51,22 +53,9 @@ export class TradingBot {
     this.technicalAnalysis = new TechnicalAnalysis(technicalConfig);
     this.positionManager = new PositionManager(this.binanceService, this.technicalAnalysis, positionSizing, leverageSettings);
     this.aiService = new AIService(this.aiConfig);
-    this.hedgeStrategy = new HedgeStrategy(
-      this.binanceService,
-      this.technicalAnalysis,
-      supportResistanceLevels,
-      positionSizing,
-      leverageSettings,
-      this.positionManager.getDynamicLevels(),
-      this.aiService
-    );
-    this.scalpStrategy = new ScalpStrategy(
-      this.binanceService,
-      this.technicalAnalysis,
-      this.positionManager.getDynamicLevels(),
-      this.positionManager,
-      this.aiService
-    );
+    // Strategies disabled - HF only mode
+    // this.hedgeStrategy = new HedgeStrategy(...);
+    // this.scalpStrategy = new ScalpStrategy(...);
     this.highFrequencyStrategy = new HighFrequencyStrategy(
       this.binanceService,
       this.technicalAnalysis,
@@ -126,6 +115,9 @@ export class TradingBot {
       });
       
       logger.info('Starting trading bot with hybrid timing system...');
+      
+      // Set TP for existing positions that don't have TP orders
+      await this.positionManager.setTakeProfitForExistingPositions();
       
       // WebSocket service removed for standalone operation
       
@@ -636,17 +628,23 @@ export class TradingBot {
       const botState = this.positionManager.getBotState();
       const positionSummary = this.positionManager.getPositionSummary();
       
-      // Get current support/resistance levels
-      const supportLevels = this.hedgeStrategy.getSupportLevels();
-      const resistanceLevels = this.hedgeStrategy.getResistanceLevels();
+      // Get current support/resistance levels from dynamic levels (HF only mode)
+      const supportLevels = this.positionManager.getDynamicLevels().getSupportLevels().map((level: any) => level.price);
+      const resistanceLevels = this.positionManager.getDynamicLevels().getResistanceLevels().map((level: any) => level.price);
       
-      // Get scalp trade status
-      const scalpTradeStatus = this.scalpStrategy.getScalpTradeStatus();
+      // Scalp trade status disabled (HF only mode)
+      const scalpTradeStatus = { isActive: false, scalpEntry: 0, hedgeLevels: [] };
       
       // Get current price for comprehensive analysis
       const currentPrice = await this.binanceService.getCurrentPrice();
       logger.info('🔍 Getting comprehensive info for price', { currentPrice: currentPrice.toFixed(4) });
-      const comprehensiveInfo = this.hedgeStrategy.getComprehensiveLevelsInfo(currentPrice);
+      
+      // Get comprehensive info from dynamic levels (HF only mode)
+      const comprehensiveInfo = {
+        currentZone: 'HF Only Mode',
+        longEntry: { description: 'HF Signal', importance: 'MEDIUM', price: currentPrice },
+        shortEntry: { description: 'HF Signal', importance: 'MEDIUM', price: currentPrice }
+      };
       
       // Safety check for comprehensiveInfo
       if (!comprehensiveInfo) {
@@ -671,7 +669,7 @@ export class TradingBot {
         strongestResistance: resistanceLevels.length > 0 ? resistanceLevels[0]?.toFixed(4) : 'None'
       },
       comprehensiveSignals: {
-        currentZone: comprehensiveInfo.currentZone?.name || 'Unknown',
+        currentZone: comprehensiveInfo.currentZone || 'HF Only Mode',
         longEntry: comprehensiveInfo.longEntry ? {
           price: comprehensiveInfo.longEntry.price?.toFixed(4) || 'N/A',
           description: comprehensiveInfo.longEntry.description || 'N/A',

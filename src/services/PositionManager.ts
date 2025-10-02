@@ -1112,6 +1112,34 @@ export class PositionManager {
   }
 
   /**
+   * Set take profit for existing positions that don't have TP orders
+   * This is needed for positions opened before TP logic was implemented
+   */
+  async setTakeProfitForExistingPositions(): Promise<void> {
+    try {
+      const openPositions = await this.binanceService.getOpenPositions();
+      
+      for (const position of openPositions) {
+        // Check if position already has TP order
+        const hasTPOrder = await this.binanceService.hasTakeProfitOrder(position);
+        
+        if (!hasTPOrder) {
+          logger.info('🎯 Setting TP for existing position without TP order', {
+            positionId: position.id,
+            positionType: position.type,
+            entryPrice: position.entryPrice,
+            currentPrice: await this.binanceService.getCurrentPrice()
+          });
+          
+          await this.setStaticTakeProfit(position);
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to set TP for existing positions', error);
+    }
+  }
+
+  /**
    * Start hedge monitoring
    */
   startHedgeMonitoring(): void {
